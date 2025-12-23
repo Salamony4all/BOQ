@@ -143,6 +143,47 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
 
+// Debug endpoint
+app.get('/api/debug', async (req, res) => {
+  try {
+    const isVercel = process.env.VERCEL === '1';
+    const hasKV = !!(process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL);
+
+    const debugInfo = {
+      isVercel,
+      hasKV,
+      cwd: process.cwd(),
+      dirname: __dirname,
+      envKeys: Object.keys(process.env).filter(k => k.includes('URL') || k.includes('TOKEN') || k.includes('KV') || k.includes('STORAGE')),
+      pathsChecked: [
+        path.join(process.cwd(), 'server/data/brands'),
+        path.join(__dirname, 'data/brands'),
+        path.join(__dirname, 'server/data/brands'),
+        '/var/task/server/data/brands'
+      ]
+    };
+
+    const pathResults = {};
+    for (const p of debugInfo.pathsChecked) {
+      try {
+        const exists = await fs.access(p).then(() => true).catch(() => false);
+        if (exists) {
+          const files = await fs.readdir(p);
+          pathResults[p] = { exists: true, files: files.filter(f => f.endsWith('.json')) };
+        } else {
+          pathResults[p] = { exists: false };
+        }
+      } catch (e) {
+        pathResults[p] = { error: e.message };
+      }
+    }
+
+    res.json({ debugInfo, pathResults });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Server error:', error);
