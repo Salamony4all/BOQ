@@ -8,46 +8,63 @@ const __dirname = path.dirname(__filename);
 
 const isVercel = process.env.VERCEL === '1';
 
-// Initialize KV client with whatever prefix Vercel provided
-const kv = createClient({
-    url: process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
-    token: process.env.KV_REST_API_TOKEN || process.env.STORAGE_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
-});
+// Support multiple Vercel environment naming conventions
+const KV_URL = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || process.env.KV_URL;
+const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.STORAGE_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_TOKEN;
+
+// Initialize KV client
+let kv = null;
+if (KV_URL && KV_TOKEN) {
+    try {
+        kv = createClient({ url: KV_URL, token: KV_TOKEN });
+    } catch (e) {
+        console.error('[Storage] Failed to initialize KV client:', e.message);
+    }
+}
+
+async function getLocalBrands() {
+    // Try multiple possible paths where Vercel/Node might place the data
+    const possiblePaths = [
+        path.join(process.cwd(), 'server/data/brands'),
+        path.join(__dirname, 'data/brands'),
+        '/var/task/server/data/brands'
+    ];
+
+    for (const brandsPath of possiblePaths) {
+        try {
+            const files = await fs.readdir(brandsPath);
+            const jsonFiles = files.filter(f => f.endsWith('.json'));
+            if (jsonFiles.length > 0) {
+                console.log(`[Storage] Found ${jsonFiles.length} brands in ${brandsPath}`);
+                const brands = await Promise.all(jsonFiles.map(async file => {
+                    try {
+                        const content = await fs.readFile(path.join(brandsPath, file), 'utf8');
+                        return JSON.parse(content);
+                    } catch (e) { return null; }
+                }));
+                return brands.filter(b => b !== null);
+            }
+        } catch (e) { /* silent skip */ }
+    }
+    return [];
+}
 
 export const brandStorage = {
     async getAllBrands() {
-        const hasKV = !!(process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL);
-
-        if (isVercel && hasKV) {
+        if (isVercel && kv) {
             try {
                 let keys = await kv.keys('brand:*');
 
+                // If KV is empty, try to migrate from local bundled data
                 if (keys.length === 0) {
-                    console.log('--- DB MIGRATION STARTING ---');
-                    const possiblePaths = [
-                        path.join(process.cwd(), 'server/data/brands'),
-                        path.join(__dirname, 'data/brands'),
-                        '/var/task/server/data/brands'
-                    ];
-
-                    for (const brandsPath of possiblePaths) {
-                        try {
-                            const exists = await fs.access(brandsPath).then(() => true).catch(() => false);
-                            if (!exists) continue;
-
-                            const localFiles = await fs.readdir(brandsPath);
-                            const jsonFiles = localFiles.filter(f => f.endsWith('.json'));
-
-                            if (jsonFiles.length > 0) {
-                                for (const file of jsonFiles) {
-                                    const content = await fs.readFile(path.join(brandsPath, file), 'utf8');
-                                    const brand = JSON.parse(content);
-                                    await kv.set(`brand:${brand.id}`, brand);
-                                }
-                                keys = await kv.keys('brand:*');
-                                break;
-                            }
-                        } catch (e) { /* silent skip */ }
+                    console.log('[Storage] KV empty, attempting migration...');
+                    const localBrands = await getLocalBrands();
+                    if (localBrands.length > 0) {
+                        for (const brand of localBrands) {
+                            await kv.set(`brand:${brand.id}`, brand);
+                        }
+                        keys = await kv.keys('brand:*');
+                        console.log(`[Storage] Migrated ${localBrands.length} brands to KV.`);
                     }
                 }
 
@@ -55,50 +72,39 @@ export const brandStorage = {
                 const brands = await kv.mget(...keys);
                 return brands.filter(Boolean);
             } catch (error) {
-                console.error('Vercel KV error:', error);
-                return [];
+                console.error('[Storage] Vercel KV error:', error.message);
+                // Fallback to local data if KV fails
+                return await getLocalBrands();
             }
         } else {
-            // Local dev or Vercel without KV configured
-            if (isVercel) return []; // Don't try local FS on Vercel without KV
-
-            const brandsDir = path.join(__dirname, 'data/brands');
-            try {
-                await fs.mkdir(brandsDir, { recursive: true });
-                const files = await fs.readdir(brandsDir);
-                const jsonFiles = files.filter(f => f.endsWith('.json'));
-                const brands = await Promise.all(jsonFiles.map(async file => {
-                    try {
-                        const content = await fs.readFile(path.join(brandsDir, file), 'utf8');
-                        return JSON.parse(content);
-                    } catch (e) { return null; }
-                }));
-                return brands.filter(b => b !== null);
-            } catch (e) { return []; }
+            // Local dev or Vercel without KV - use local data
+            return await getLocalBrands();
         }
     },
 
     async getBrandById(brandId) {
-        const hasKV = !!(process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL);
-        if (isVercel && hasKV) {
+        if (kv) {
             try {
-                return await kv.get(`brand:${brandId}`);
-            } catch (error) { return null; }
-        } else {
-            const brands = await this.getAllBrands();
-            return brands.find(b => String(b.id) === String(brandId));
+                const brand = await kv.get(`brand:${brandId}`);
+                if (brand) return brand;
+            } catch (error) { /* fallback */ }
         }
+        const brands = await this.getAllBrands();
+        return brands.find(b => String(b.id) === String(brandId));
     },
 
     async saveBrand(brand) {
-        const hasKV = !!(process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL);
-        if (isVercel && hasKV) {
+        if (kv) {
             try {
                 await kv.set(`brand:${brand.id}`, brand);
                 return true;
             } catch (error) { return false; }
         } else {
-            if (isVercel) return false;
+            // Local dev save
+            if (isVercel) {
+                console.warn('[Storage] Cannot save brand to local disk on Vercel - KV is required.');
+                return false;
+            }
             try {
                 const brandsDir = path.join(__dirname, 'data/brands');
                 const sanitizedName = brand.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
@@ -111,8 +117,7 @@ export const brandStorage = {
     },
 
     async deleteBrand(brandId) {
-        const hasKV = !!(process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL);
-        if (isVercel && hasKV) {
+        if (kv) {
             try {
                 await kv.del(`brand:${brandId}`);
                 return true;
