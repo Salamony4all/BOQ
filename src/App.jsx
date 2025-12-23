@@ -140,8 +140,14 @@ function AppContent({ onOpenSettings }) {
 
     } catch (err) {
       console.error('Upload/Process error:', err);
-      // Show raw error for debugging
-      setError(err.message || 'Failed to process file');
+      let errMsg = err.message || 'Failed to process file';
+
+      // If it's a fetch error during the token phase
+      if (err.name === 'BlobError' || errMsg.includes('token')) {
+        errMsg = `Vercel Storage Error: ${errMsg}. Check browser console for details.`;
+      }
+
+      setError(errMsg);
       setUploading(false);
     }
   };

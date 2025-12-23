@@ -29,6 +29,12 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// Path logger for Vercel debugging
+app.use((req, res, next) => {
+  console.log(`[PathLog] ${req.method} ${req.url} (Path: ${req.path})`);
+  next();
+});
+
 // Serve static files from uploads directory
 const isVercel = process.env.VERCEL === '1';
 const uploadsPath = isVercel ? '/tmp/uploads' : path.join(__dirname, '../uploads');
@@ -104,34 +110,43 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 });
 
 // Large File Support: Token generation for direct browser upload to Vercel Blob
-app.post('/api/upload/blob-token', async (req, res) => {
+// Support both /api/upload/... and /upload/... paths for Vercel compatibility
+const blobTokenHandler = async (req, res) => {
+  console.log('[BlobToken] Generating token for:', req.body.pathname || 'unknown');
   try {
     const token = process.env.BLOB_READ_WRITE_TOKEN;
     if (!token && isVercel) {
-      console.error('CRITICAL: BLOB_READ_WRITE_TOKEN is missing in Vercel environment.');
-      return res.status(500).json({ error: 'Blob storage not configured on server (Missing Token)' });
+      console.error('CRITICAL: BLOB_READ_WRITE_TOKEN is missing!');
+      return res.status(500).json({ error: 'Blob storage token not found in Environment Variables' });
     }
 
     const jsonResponse = await handleUpload({
       body: req.body,
       request: req,
-      token: token, // Explicitly pass the token for maximum reliability
+      token: token,
       onBeforeGenerateToken: async (pathname) => {
         return {
-          allowedContentTypes: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'],
+          allowedContentTypes: [
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel',
+            'application/octet-stream'
+          ],
           tokenPayload: JSON.stringify({ userId: 'anonymous' }),
         };
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
-        console.log('Blob upload completed:', blob.url);
+        console.log('[BlobToken] Upload successful:', blob.url);
       },
     });
     return res.status(200).json(jsonResponse);
   } catch (error) {
-    console.error('Blob Token Error:', error.message);
-    return res.status(400).json({ error: `Blob Token Error: ${error.message}` });
+    console.error('[BlobToken] Error:', error.message);
+    return res.status(400).json({ error: error.message });
   }
-});
+};
+
+app.post('/api/upload/blob-token', blobTokenHandler);
+app.post('/upload/blob-token', blobTokenHandler); // Fallback for stripped prefix
 
 // Process a file that was already uploaded to Vercel Blob
 app.post('/api/process-blob', async (req, res) => {
