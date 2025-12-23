@@ -1,0 +1,121 @@
+.modalOverlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modalOverlay.visible {
+    opacity: 1;
+}
+
+.modalOverlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.modalContent {
+    background: rgba(30, 41, 59, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 24px;
+    padding: 3rem 4rem;
+    text-align: center;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    min-width: 400px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modalContent.visible {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.modalContent.hidden {
+    opacity: 0;
+    transform: scale(0.9);
+}
+
+.throbber {
+    margin-bottom: 2rem;
+    display: flex;
+    justify-content: center;
+}
+
+.spinner {
+    width: 80px;
+    height: 80px;
+    border: 4px solid rgba(102, 126, 234, 0.2);
+    border-top-color: #667eea;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.stage {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #f8fafc;
+    margin-bottom: 1.5rem;
+    min-height: 2rem;
+}
+
+.progressBar {
+    width: 100%;
+    height: 12px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.progressFill {
+    height: 100%;
+    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 0 20px rgba(102, 126, 234, 0.5);
+}
+
+.percentage {
+    font-size: 2.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-top: 1rem;
+}
+
+@media (max-width: 768px) {
+    .modalContent {
+        min-width: 320px;
+        padding: 2rem;
+    }
+
+    .spinner {
+        width: 60px;
+        height: 60px;
+    }
+
+    .stage {
+        font-size: 1.25rem;
+    }
+
+    .percentage {
+        font-size: 2rem;
+    }
+}
