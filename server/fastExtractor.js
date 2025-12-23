@@ -25,7 +25,7 @@ const BOQ_HEADER_KEYWORDS = [/description|desc/i, /qty|quantity/i, /unit/i, /rat
  * Fast extraction using Stream Reader + Direct Zip Access for images
  * Reduces memory usage by 90% compared to standard generic extraction
  */
-async function extractExcelData(filePath, progressCallback = () => { }) {
+async function extractExcelData(filePath, progressCallback = () => { }, onBlobCreated = null) {
     const workbookReader = new ExcelJS.stream.xlsx.WorkbookReader(filePath, {
         sharedStrings: 'cache',
         hyperlinks: 'ignore',
@@ -38,7 +38,7 @@ async function extractExcelData(filePath, progressCallback = () => { }) {
     await fs.mkdir(imagesDir, { recursive: true });
 
     // Extract all images first
-    const imageMap = await extractImagesAndMap(filePath, imagesDir);
+    const imageMap = await extractImagesAndMap(filePath, imagesDir, onBlobCreated);
     console.log(`[Extracted Images] Total found: ${imageMap.length}`);
     if (imageMap.length > 0) {
         console.log(`[Image Sample] Sheet: ${imageMap[0].sheetIndex}, Row: ${imageMap[0].row}, Col: ${imageMap[0].col}`);
@@ -100,7 +100,7 @@ import { put } from '@vercel/blob';
 /**
  * Extracts images directly from ZIP and maps them to (row, col)
  */
-async function extractImagesAndMap(filePath, imagesDir) {
+async function extractImagesAndMap(filePath, imagesDir, onBlobCreated = null) {
     const imageLocations = []; // Array of { row, col, sheetId, imagePath }
 
     try {
@@ -129,6 +129,7 @@ async function extractImagesAndMap(filePath, imagesDir) {
                             access: 'public',
                         });
                         savedImages[fileName] = blob.url;
+                        if (onBlobCreated) onBlobCreated(blob.url); // Track for cleanup
                         return;
                     } catch (err) {
                         console.error(`Vercel Blob upload failed for ${fileName}:`, err.message);

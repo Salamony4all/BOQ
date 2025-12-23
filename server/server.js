@@ -90,8 +90,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     // Track file for cleanup
     cleanupService.trackFile(sessionId, filePath);
 
-    // Extract data from Excel
-    const extractedData = await extractExcelData(filePath, () => { });
+    // Extract data from Excel (pass callback to track blobs)
+    const extractedData = await extractExcelData(filePath, () => { }, (url) => {
+      cleanupService.trackBlob(sessionId, url);
+    });
 
     // Send final result
     res.json({
@@ -168,8 +170,10 @@ app.post('/api/process-blob', async (req, res) => {
     // Track for cleanup
     cleanupService.trackFile(sessionId, filePath);
 
-    // Extract
-    const extractedData = await extractExcelData(filePath, () => { });
+    // Extract (pass callback to track blobs)
+    const extractedData = await extractExcelData(filePath, () => { }, (url) => {
+      cleanupService.trackBlob(sessionId, url);
+    });
 
     // (Optional) Delete the blob after processing to save space
     try { await del(url); } catch (e) { console.error('Failed to delete blob:', e.message); }

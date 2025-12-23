@@ -76,7 +76,10 @@ function AppContent({ onOpenSettings }) {
           body: JSON.stringify({ url: blob.url, sessionId })
         });
 
-        if (!res.ok) throw new Error('Cloud processing failed');
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.details || errorData.error || 'Cloud processing failed');
+        }
         const response = await res.json();
         setExtractedData(response.data);
         setProgress(100);
