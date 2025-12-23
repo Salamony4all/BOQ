@@ -26,12 +26,14 @@ app.use(cors());
 app.use(express.json());
 
 // Serve static files from uploads directory
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+const isVercelLocal = process.env.VERCEL === '1';
+app.use('/uploads', express.static(isVercelLocal ? '/tmp/uploads' : path.join(__dirname, '../uploads')));
 
 // Multer configuration for file upload
 const storage = multer.diskStorage({
   destination: async (req, file, cb) => {
-    const uploadsDir = path.join(__dirname, '../uploads');
+    const isVercel = process.env.VERCEL === '1';
+    const uploadsDir = isVercel ? '/tmp/uploads' : path.join(__dirname, '../uploads');
     try {
       await fs.mkdir(uploadsDir, { recursive: true });
     } catch (error) {
@@ -166,7 +168,8 @@ app.post('/api/reset', async (req, res) => {
   console.log('Resetting application state...');
   await cleanupService.cleanupAll();
   // Re-create uploads directory immediately to ensure readiness
-  const uploadsDir = path.join(__dirname, '../uploads');
+  const isVercel = process.env.VERCEL === '1';
+  const uploadsDir = isVercel ? '/tmp/uploads' : path.join(__dirname, '../uploads');
   const imagesDir = path.join(uploadsDir, 'images');
   try {
     await fs.mkdir(uploadsDir, { recursive: true });
@@ -175,18 +178,21 @@ app.post('/api/reset', async (req, res) => {
   res.json({ success: true, message: 'Environment reset complete' });
 });
 
-app.listen(PORT, async () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`📁 Upload endpoint: http://localhost:${PORT}/api/upload`);
+if (process.env.NODE_ENV !== 'production' || process.env.VITE_DEV_SERVER) {
+  const server = app.listen(PORT, async () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+    console.log(`📁 Upload endpoint: http://localhost:${PORT}/api/upload`);
 
-  // Clean up on startup
-  await cleanupService.cleanupAll();
-});
+    // Clean up on startup
+    await cleanupService.cleanupAll();
+  });
+}
 
 
 // ... existing code ...
 
-const BRANDS_DIR = path.join(__dirname, 'data/brands');
+const isVercel = process.env.VERCEL === '1';
+const BRANDS_DIR = isVercel ? '/tmp/server/data/brands' : path.join(__dirname, 'data/brands');
 
 // Ensure brands directory exists on startup
 (async () => {
@@ -199,7 +205,8 @@ const BRANDS_DIR = path.join(__dirname, 'data/brands');
 
 const brandStorage = multer.diskStorage({
   destination: async (req, file, cb) => {
-    const brandsDir = path.join(__dirname, '../uploads/brands');
+    const isVercel = process.env.VERCEL === '1';
+    const brandsDir = isVercel ? '/tmp/uploads/brands' : path.join(__dirname, '../uploads/brands');
     try {
       await fs.mkdir(brandsDir, { recursive: true });
     } catch (error) {
