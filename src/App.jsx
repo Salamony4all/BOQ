@@ -62,6 +62,7 @@ function AppContent({ onOpenSettings }) {
         // Direct Client-Side Upload to Vercel Blob
         const blob = await blobUpload(file.name, file, {
           access: 'public',
+          addRandomSuffix: true,
           handleUploadUrl: `${API_BASE}/api/upload/blob-token`,
           onUploadProgress: (progressEvent) => {
             setProgress(progressEvent.percentage * 0.5); // First 50% is upload

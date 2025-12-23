@@ -127,6 +127,7 @@ async function extractImagesAndMap(filePath, imagesDir, onBlobCreated = null) {
                     try {
                         const blob = await put(`boq/images/${timestamp}_${fileName}`, data, {
                             access: 'public',
+                            addRandomSuffix: true,
                         });
                         savedImages[fileName] = blob.url;
                         if (onBlobCreated) onBlobCreated(blob.url); // Track for cleanup
