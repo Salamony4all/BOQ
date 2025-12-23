@@ -2,7 +2,8 @@
     "version": 2,
     "functions": {
         "api/index.js": {
-            "includeFiles": "server/data/brands/**"
+            "includeFiles": "server/data/brands/**",
+            "maxDuration": 60
         }
     },
     "rewrites": [

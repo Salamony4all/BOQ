@@ -46,6 +46,12 @@ function AppContent({ onOpenSettings }) {
   }, []);
 
   const handleFileUpload = async (file) => {
+    // Vercel strict 4.5MB limit check
+    if (window.location.hostname !== 'localhost' && file.size > 4.4 * 1024 * 1024) {
+      setError('File too large for live server (Max 4.5MB). Please remove some images or split the file.');
+      return;
+    }
+
     setShowLanding(false);
     setUploading(true);
     setProgress(0);

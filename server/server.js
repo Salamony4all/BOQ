@@ -24,11 +24,13 @@ const cleanupService = new CleanupService();
 
 // CORS configuration
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
 // Serve static files from uploads directory
-const isVercelLocal = process.env.VERCEL === '1';
-app.use('/uploads', express.static(isVercelLocal ? '/tmp/uploads' : path.join(__dirname, '../uploads')));
+const isVercel = process.env.VERCEL === '1';
+const uploadsPath = isVercel ? '/tmp/uploads' : path.join(__dirname, '../uploads');
+app.use('/uploads', express.static(uploadsPath));
 
 // Multer configuration for file upload
 const storage = multer.diskStorage({
@@ -212,7 +214,7 @@ app.post('/api/reset', async (req, res) => {
   // Re-create uploads directory immediately to ensure readiness
   const isVercel = process.env.VERCEL === '1';
   const uploadsDir = isVercel ? '/tmp/uploads' : path.join(__dirname, '../uploads');
-  const imagesDir = path.join(uploadsDir, 'images');
+  const imagesDir = isVercel ? '/tmp/uploads/images' : path.join(__dirname, '../uploads/images');
   try {
     await fs.mkdir(uploadsDir, { recursive: true });
     await fs.mkdir(imagesDir, { recursive: true });
@@ -494,7 +496,10 @@ app.get('/api/brands/:id/export', async (req, res) => {
 app.post('/api/brands/:id/import', upload.single('file'), async (req, res) => {
   try {
     const brandId = req.params.id;
-    if (!req.file) return res.status(400).json({ error: 'No file' });
+    const brand = await brandStorage.getBrandById(brandId);
+    if (!brand) return res.status(404).json({ error: 'Brand not found' });
+
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
     const products = await dbManager.importFromExcel(req.file.path);
 

@@ -33,7 +33,8 @@ async function extractExcelData(filePath, progressCallback = () => { }) {
         worksheets: 'emit'
     });
 
-    const imagesDir = path.join(__dirname, '../uploads/images');
+    const isVercel = process.env.VERCEL === '1';
+    const imagesDir = isVercel ? '/tmp/uploads/images' : path.join(__dirname, '../uploads/images');
     await fs.mkdir(imagesDir, { recursive: true });
 
     // Extract all images first
