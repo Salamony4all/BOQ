@@ -135,6 +135,7 @@ const blobTokenHandler = async (req, res) => {
             'application/octet-stream'
           ],
           tokenPayload: JSON.stringify({ userId: 'anonymous' }),
+          addRandomSuffix: true,
         };
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {
