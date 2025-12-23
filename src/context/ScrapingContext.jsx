@@ -3,6 +3,8 @@ import styles from '../styles/AddBrandModal.module.css';
 
 const ScrapingContext = createContext(null);
 
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+
 export function ScrapingProvider({ children }) {
     const [scrapingState, setScrapingState] = useState({
         isActive: false,
@@ -46,7 +48,7 @@ export function ScrapingProvider({ children }) {
         }
 
         try {
-            await fetch(`http://localhost:3001/api/tasks/${scrapingState.taskId}`, {
+            await fetch(`${API_BASE}/api/tasks/${scrapingState.taskId}`, {
                 method: 'DELETE'
             });
         } catch (e) {

@@ -6,6 +6,8 @@ import MultiBudgetModal from './MultiBudgetModal';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+
 function TableViewer({ data }) {
     const [selectedImage, setSelectedImage] = useState(null);
     const [tables, setTables] = useState([]); // Base Data
@@ -256,7 +258,7 @@ function TableViewer({ data }) {
                         for (const img of allImages) {
                             if (img?.url) {
                                 try {
-                                    const imgResult = await getImageData(`http://localhost:3001${img.url}`);
+                                    const imgResult = await getImageData(`${API_BASE}${img.url}`);
                                     if (imgResult) imageDataMap[rowIdx].push(imgResult);
                                 } catch (e) { }
                             }
@@ -416,7 +418,7 @@ function TableViewer({ data }) {
                         for (const img of allImages) {
                             if (img?.url) {
                                 try {
-                                    const imgResult = await getImageData(`http://localhost:3001${img.url}`);
+                                    const imgResult = await getImageData(`${API_BASE}${img.url}`);
                                     if (imgResult) {
                                         const base64 = imgResult.dataUrl.split(',')[1];
                                         const imageId = workbook.addImage({
@@ -1342,10 +1344,10 @@ function TableViewer({ data }) {
                                                         {(cell.images || [cell.image]).map((imgData, imgIdx) => (
                                                             <img
                                                                 key={imgIdx}
-                                                                src={`http://localhost:3001${imgData.url}`}
+                                                                src={`${API_BASE}${imgData.url}`}
                                                                 alt="Thumb"
                                                                 className={styles.image}
-                                                                onClick={() => setSelectedImage(`http://localhost:3001${imgData.url}`)}
+                                                                onClick={() => setSelectedImage(`${API_BASE}${imgData.url}`)}
                                                                 style={{ cursor: 'pointer' }}
                                                             />
                                                         ))}

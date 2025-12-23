@@ -17,6 +17,8 @@ const CAROUSEL_IMAGES = [
   'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800&q=80', // Sofa design
 ];
 
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+
 function AppContent({ onOpenSettings }) {
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const [uploading, setUploading] = useState(false);
@@ -30,7 +32,7 @@ function AppContent({ onOpenSettings }) {
 
   // Reset environment on app load
   useEffect(() => {
-    fetch('http://localhost:3001/api/reset', { method: 'POST' })
+    fetch(`${API_BASE}/api/reset`, { method: 'POST' })
       .then(() => console.log('Environment reset complete'))
       .catch(console.error);
   }, []);
@@ -81,7 +83,7 @@ function AppContent({ onOpenSettings }) {
         setUploading(false);
       });
 
-      xhr.open('POST', 'http://localhost:3001/api/upload');
+      xhr.open('POST', `${API_BASE}/api/upload`);
       xhr.setRequestHeader('x-session-id', sessionId);
 
       const progressInterval = setInterval(() => {

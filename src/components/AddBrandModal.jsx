@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import styles from '../styles/AddBrandModal.module.css';
 import { useScraping } from '../context/ScrapingContext';
 
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+
 export default function AddBrandModal({ isOpen, onClose, onBrandAdded }) {
     const [name, setName] = useState('');
     const [website, setWebsite] = useState('');
@@ -26,7 +28,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded }) {
 
     const fetchBrands = async () => {
         try {
-            const res = await fetch('http://localhost:3001/api/brands');
+            const res = await fetch(`${API_BASE}/api/brands`);
             const data = await res.json();
             if (Array.isArray(data)) {
                 setAllBrands(data.sort((a, b) => a.name.localeCompare(b.name)));
@@ -59,8 +61,8 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded }) {
 
         try {
             const endpoint = scrapingMethod === 'ai'
-                ? 'http://localhost:3001/api/scrape-ai'
-                : 'http://localhost:3001/api/scrape-brand';
+                ? `${API_BASE}/api/scrape-ai`
+                : `${API_BASE}/api/scrape-brand`;
 
             const res = await fetch(endpoint, {
                 method: 'POST',
@@ -85,7 +87,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded }) {
             // Poll for status
             const pollInterval = setInterval(async () => {
                 try {
-                    const statusRes = await fetch(`http://localhost:3001/api/tasks/${taskId}`);
+                    const statusRes = await fetch(`${API_BASE}/api/tasks/${taskId}`);
                     if (!statusRes.ok) return;
                     const task = await statusRes.json();
 
@@ -122,7 +124,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded }) {
     };
 
     const handleDownloadDB = (brandId) => {
-        window.open(`http://localhost:3001/api/brands/${brandId}/export`, '_blank');
+        window.open(`${API_BASE}/api/brands/${brandId}/export`, '_blank');
     };
 
     const handleUploadClick = (brandId) => {
@@ -140,7 +142,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded }) {
         formData.append('file', file);
 
         try {
-            const res = await fetch(`http://localhost:3001/api/brands/${importingId}/import`, {
+            const res = await fetch(`${API_BASE}/api/brands/${importingId}/import`, {
                 method: 'POST',
                 body: formData
             });

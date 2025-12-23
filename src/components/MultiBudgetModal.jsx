@@ -8,6 +8,8 @@ import autoTable from 'jspdf-autotable';
 import { ScrapingProvider } from '../context/ScrapingContext';
 import { useCompanyProfile } from '../context/CompanyContext';
 
+const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+
 export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
     const { companyLogo: globalCompanyLogo } = useCompanyProfile();
     const [activeTier, setActiveTier] = useState('mid'); // budgetary, mid, high
@@ -40,7 +42,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
 
     useEffect(() => {
         // Fetch brands on mount
-        fetch('http://localhost:3001/api/brands')
+        fetch(`${API_BASE}/api/brands`)
             .then(res => res.json())
             .then(data => {
                 if (Array.isArray(data)) setBrands(data);
@@ -260,7 +262,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         if (isExternal) {
             // Use server proxy for external images
             try {
-                const proxyUrl = `http://localhost:3001/api/image-proxy?url=${encodeURIComponent(url)}`;
+                const proxyUrl = `${API_BASE}/api/image-proxy?url=${encodeURIComponent(url)}`;
                 const response = await fetch(proxyUrl);
                 if (!response.ok) return null;
                 const data = await response.json();
@@ -354,7 +356,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             // Reference image
             if (row.imageRef) {
                 try {
-                    const url = row.imageRef.startsWith('http') ? row.imageRef : `http://localhost:3001${row.imageRef}`;
+                    const url = row.imageRef.startsWith('http') ? row.imageRef : `${API_BASE}${row.imageRef}`;
                     const result = await getImageData(url);
                     if (result) imageDataMap[`ref_${i}`] = result;
                 } catch (e) { console.log('Ref image load error:', e); }
@@ -507,9 +509,9 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         const fetchImageBase64 = async (url) => {
             if (!url) return null;
             try {
-                const isExternal = url.startsWith('http') && !url.includes('localhost:3001');
+                const isExternal = url.startsWith('http') && !url.includes('localhost:3001') && !url.includes(window.location.hostname);
                 if (isExternal) {
-                    const proxyUrl = `http://localhost:3001/api/image-proxy?url=${encodeURIComponent(url)}`;
+                    const proxyUrl = `${API_BASE}/api/image-proxy?url=${encodeURIComponent(url)}`;
                     const response = await fetch(proxyUrl);
                     if (!response.ok) return null;
                     const data = await response.json();
@@ -618,7 +620,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             // Add reference image (BOQ mode only, column 2)
             if (isBoqMode && row.imageRef) {
                 try {
-                    const refUrl = row.imageRef.startsWith('http') ? row.imageRef : `http://localhost:3001${row.imageRef}`;
+                    const refUrl = row.imageRef.startsWith('http') ? row.imageRef : `${API_BASE}${row.imageRef}`;
                     const base64 = await fetchImageBase64(refUrl);
                     if (base64) {
                         const imageId = workbook.addImage({
