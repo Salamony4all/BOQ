@@ -10,6 +10,12 @@ import { useCompanyProfile } from '../context/CompanyContext';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
+const getFullUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
+    return `${API_BASE}${url}`;
+};
+
 export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
     const { companyLogo: globalCompanyLogo } = useCompanyProfile();
     const [activeTier, setActiveTier] = useState('mid'); // budgetary, mid, high
@@ -356,7 +362,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             // Reference image
             if (row.imageRef) {
                 try {
-                    const url = row.imageRef.startsWith('http') ? row.imageRef : `${API_BASE}${row.imageRef}`;
+                    const url = getFullUrl(row.imageRef);
                     const result = await getImageData(url);
                     if (result) imageDataMap[`ref_${i}`] = result;
                 } catch (e) { console.log('Ref image load error:', e); }
@@ -620,7 +626,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             // Add reference image (BOQ mode only, column 2)
             if (isBoqMode && row.imageRef) {
                 try {
-                    const refUrl = row.imageRef.startsWith('http') ? row.imageRef : `${API_BASE}${row.imageRef}`;
+                    const refUrl = getFullUrl(row.imageRef);
                     const base64 = await fetchImageBase64(refUrl);
                     if (base64) {
                         const imageId = workbook.addImage({
@@ -778,7 +784,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
 
             // Reference image section (BOQ mode only)
             if (isBoqMode && row.imageRef) {
-                const refUrl = row.imageRef.startsWith('http') ? row.imageRef : `http://localhost:3001${row.imageRef}`;
+                const refUrl = getFullUrl(row.imageRef);
                 try {
                     const refImg = await getImageData(refUrl);
                     if (refImg) {
@@ -993,7 +999,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
 
             // Reference image section (BOQ mode only)
             if (isBoqMode && row.imageRef) {
-                const refUrl = row.imageRef.startsWith('http') ? row.imageRef : `http://localhost:3001${row.imageRef}`;
+                const refUrl = getFullUrl(row.imageRef);
                 try {
                     const refImg = await getImageData(refUrl);
                     if (refImg) {

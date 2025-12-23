@@ -8,6 +8,12 @@ import autoTable from 'jspdf-autotable';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
+const getFullUrl = (url) => {
+    if (!url) return '';
+    if (url.startsWith('http') || url.startsWith('data:')) return url;
+    return `${API_BASE}${url}`;
+};
+
 function TableViewer({ data }) {
     const [selectedImage, setSelectedImage] = useState(null);
     const [tables, setTables] = useState([]); // Base Data
@@ -258,7 +264,7 @@ function TableViewer({ data }) {
                         for (const img of allImages) {
                             if (img?.url) {
                                 try {
-                                    const imgResult = await getImageData(`${API_BASE}${img.url}`);
+                                    const imgResult = await getImageData(getFullUrl(img.url));
                                     if (imgResult) imageDataMap[rowIdx].push(imgResult);
                                 } catch (e) { }
                             }
@@ -418,7 +424,7 @@ function TableViewer({ data }) {
                         for (const img of allImages) {
                             if (img?.url) {
                                 try {
-                                    const imgResult = await getImageData(`${API_BASE}${img.url}`);
+                                    const imgResult = await getImageData(getFullUrl(img.url));
                                     if (imgResult) {
                                         const base64 = imgResult.dataUrl.split(',')[1];
                                         const imageId = workbook.addImage({
@@ -585,7 +591,7 @@ function TableViewer({ data }) {
                 for (const img of allImages.slice(0, 4)) {
                     if (img?.url) {
                         try {
-                            const imgResult = await getImageData(`http://localhost:3001${img.url}`);
+                            const imgResult = await getImageData(getFullUrl(img.url));
                             if (imgResult) imageResults.push(imgResult);
                         } catch (e) { }
                     }
@@ -860,7 +866,7 @@ function TableViewer({ data }) {
                 for (const img of allImages.slice(0, 4)) {
                     if (img?.url) {
                         try {
-                            const imgResult = await getImageData(`http://localhost:3001${img.url}`);
+                            const imgResult = await getImageData(getFullUrl(img.url));
                             if (imgResult) loadedImages.push(imgResult);
                         } catch (e) { }
                     }
@@ -1167,7 +1173,7 @@ function TableViewer({ data }) {
                 for (const img of allImages.slice(0, 4)) {
                     if (img?.url) {
                         try {
-                            const imgResult = await getImageData(`http://localhost:3001${img.url}`);
+                            const imgResult = await getImageData(getFullUrl(img.url));
                             if (imgResult) imageResults.push(imgResult);
                         } catch (e) { }
                     }
@@ -1344,10 +1350,10 @@ function TableViewer({ data }) {
                                                         {(cell.images || [cell.image]).map((imgData, imgIdx) => (
                                                             <img
                                                                 key={imgIdx}
-                                                                src={`${API_BASE}${imgData.url}`}
+                                                                src={getFullUrl(imgData.url)}
                                                                 alt="Thumb"
                                                                 className={styles.image}
-                                                                onClick={() => setSelectedImage(`${API_BASE}${imgData.url}`)}
+                                                                onClick={() => setSelectedImage(getFullUrl(imgData.url))}
                                                                 style={{ cursor: 'pointer' }}
                                                             />
                                                         ))}

@@ -95,6 +95,8 @@ async function extractExcelData(filePath, progressCallback = () => { }) {
     };
 }
 
+import { put } from '@vercel/blob';
+
 /**
  * Extracts images directly from ZIP and maps them to (row, col)
  */
@@ -102,33 +104,41 @@ async function extractImagesAndMap(filePath, imagesDir) {
     const imageLocations = []; // Array of { row, col, sheetId, imagePath }
 
     try {
-        console.error(`[FastExtractor] Opening zip file: ${filePath}`);
+        console.log(`[FastExtractor] Opening zip file: ${filePath}`);
         const zip = new AdmZip(filePath);
         const zipEntries = zip.getEntries();
-        console.error(`[FastExtractor] Zip entries count: ${zipEntries.length}`);
-
-        // Debug: Log first 10 entries to check structure
-        zipEntries.slice(0, 5).forEach(e => console.error(` - Entry: ${e.entryName}`));
 
         // 1. Extract all media files
-        // Case-insensitive check, handle both slash types
         const mediaEntries = zipEntries.filter(entry => entry.entryName.match(/^xl[\\\/]media[\\\/]/i));
-        console.error(`[FastExtractor] Found ${mediaEntries.length} media files.`);
+        const savedImages = {};
 
-        const savedImages = {}; // filename inside zip -> local public path relative to server
-
-        mediaEntries.forEach(entry => {
+        for (const entry of mediaEntries) {
             const fileName = path.basename(entry.entryName);
+            const data = entry.getData();
+
+            // Try Vercel Blob first for production persistence
+            if (process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL) {
+                try {
+                    const blob = await put(`boq/images/${Date.now()}_${fileName}`, data, {
+                        access: 'public',
+                    });
+                    savedImages[fileName] = blob.url;
+                    continue;
+                } catch (err) {
+                    console.error('Vercel Blob upload failed, falling back to local:', err.message);
+                }
+            }
+
+            // Local fallback (or if not on Vercel)
             const targetName = `${Date.now()}_${fileName}`;
             const targetPath = path.join(imagesDir, targetName);
             try {
-                fsSync.writeFileSync(targetPath, entry.getData());
+                fsSync.writeFileSync(targetPath, data);
                 savedImages[fileName] = `/uploads/images/${targetName}`;
-                // console.log(`   > Extracted: ${fileName}`);
             } catch (err) {
-                console.error(`   > Failed to write ${fileName}:`, err);
+                console.error(`   > Failed to write ${fileName} locally:`, err);
             }
-        });
+        }
 
         // 2. Parse relationships to map Cell -> Image
         const wbRelsEntry = zipEntries.find(e => e.entryName === 'xl/_rels/workbook.xml.rels');
