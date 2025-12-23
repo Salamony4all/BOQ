@@ -106,6 +106,12 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 // Large File Support: Token generation for direct browser upload to Vercel Blob
 app.post('/api/upload/blob-token', async (req, res) => {
   try {
+    const token = process.env.BLOB_READ_WRITE_TOKEN;
+    if (!token && isVercel) {
+      console.error('CRITICAL: BLOB_READ_WRITE_TOKEN is missing in Vercel environment.');
+      return res.status(500).json({ error: 'Blob storage not configured on server (Missing Token)' });
+    }
+
     const jsonResponse = await handleUpload({
       body: req.body,
       request: req,
@@ -121,7 +127,8 @@ app.post('/api/upload/blob-token', async (req, res) => {
     });
     return res.status(200).json(jsonResponse);
   } catch (error) {
-    return res.status(400).json({ error: error.message });
+    console.error('Blob Token Error:', error.message);
+    return res.status(400).json({ error: `Blob Token Error: ${error.message}` });
   }
 });
 

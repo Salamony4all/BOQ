@@ -140,7 +140,11 @@ function AppContent({ onOpenSettings }) {
 
     } catch (err) {
       console.error('Upload/Process error:', err);
-      setError(err.message || 'Failed to process file');
+      let errMsg = err.message || 'Failed to process file';
+      if (errMsg.includes('token')) {
+        errMsg = 'Failed to connect to Vercel Storage. Please ensure you have REDEPLOYED your app after clicking "Connect" in Vercel Storage settings.';
+      }
+      setError(errMsg);
       setUploading(false);
     }
   };
