@@ -115,6 +115,7 @@ app.post('/api/upload/blob-token', async (req, res) => {
     const jsonResponse = await handleUpload({
       body: req.body,
       request: req,
+      token: token, // Explicitly pass the token for maximum reliability
       onBeforeGenerateToken: async (pathname) => {
         return {
           allowedContentTypes: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'],
