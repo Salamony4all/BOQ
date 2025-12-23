@@ -1,4 +1,4 @@
-import { kv } from '@vercel/kv';
+import { createClient } from '@vercel/kv';
 import path from 'path';
 import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
@@ -7,34 +7,58 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const isVercel = process.env.VERCEL === '1';
-const BRANDS_DIR = isVercel ? '/tmp/server/data/brands' : path.join(__dirname, 'data/brands');
+
+// Initialize KV client with whatever prefix Vercel provided
+const kv = createClient({
+    url: process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.KV_REST_API_TOKEN || process.env.STORAGE_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN,
+});
 
 export const brandStorage = {
     async getAllBrands() {
         const hasKV = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
+
         if (isVercel && hasKV) {
             try {
                 let keys = await kv.keys('brand:*');
 
-                // --- Migration Logic ---
                 if (keys.length === 0) {
-                    console.log('Migrating local brands to Vercel KV...');
-                    try {
-                        const localFiles = await fs.readdir(path.join(__dirname, 'data/brands'));
-                        const jsonFiles = localFiles.filter(f => f.endsWith('.json'));
-                        for (const file of jsonFiles) {
-                            const content = await fs.readFile(path.join(__dirname, 'data/brands', file), 'utf8');
-                            const brand = JSON.parse(content);
-                            await kv.set(`brand:${brand.id}`, brand);
+                    console.log('--- DB MIGRATION STARTING ---');
+                    // Try multiple possible paths where Vercel might have placed the brands folder
+                    const possiblePaths = [
+                        path.join(process.cwd(), 'server/data/brands'),
+                        path.join(__dirname, 'data/brands'),
+                        '/var/task/server/data/brands'
+                    ];
+
+                    for (const brandsPath of possiblePaths) {
+                        try {
+                            console.log(`Checking path: ${brandsPath}`);
+                            const localFiles = await fs.readdir(brandsPath);
+                            const jsonFiles = localFiles.filter(f => f.endsWith('.json'));
+
+                            if (jsonFiles.length > 0) {
+                                console.log(`Found ${jsonFiles.length} brands to migrate in ${brandsPath}`);
+                                for (const file of jsonFiles) {
+                                    const content = await fs.readFile(path.join(brandsPath, file), 'utf8');
+                                    const brand = JSON.parse(content);
+                                    await kv.set(`brand:${brand.id}`, brand);
+                                }
+                                keys = await kv.keys('brand:*');
+                                console.log('--- DB MIGRATION SUCCESSFUL ---');
+                                break;
+                            }
+                        } catch (e) {
+                            console.log(`Path ${brandsPath} not available: ${e.message}`);
                         }
-                        keys = await kv.keys('brand:*');
-                    } catch (migrationError) {
-                        console.error('Migration failed:', migrationError);
                     }
                 }
-                // -----------------------
 
-                if (keys.length === 0) return [];
+                if (keys.length === 0) {
+                    console.log('No brands found in KV and migration found no local files.');
+                    return [];
+                }
+
                 const brands = await kv.mget(...keys);
                 return brands.filter(Boolean);
             } catch (error) {
@@ -42,22 +66,20 @@ export const brandStorage = {
                 return [];
             }
         } else {
+            // Local development logic
+            const brandsDir = path.join(__dirname, 'data/brands');
             try {
-                await fs.mkdir(BRANDS_DIR, { recursive: true });
-                const files = await fs.readdir(BRANDS_DIR);
+                await fs.mkdir(brandsDir, { recursive: true });
+                const files = await fs.readdir(brandsDir);
                 const jsonFiles = files.filter(f => f.endsWith('.json'));
                 const brands = await Promise.all(jsonFiles.map(async file => {
                     try {
-                        const content = await fs.readFile(path.join(BRANDS_DIR, file), 'utf8');
+                        const content = await fs.readFile(path.join(brandsDir, file), 'utf8');
                         return JSON.parse(content);
-                    } catch (e) {
-                        return null;
-                    }
+                    } catch (e) { return null; }
                 }));
                 return brands.filter(b => b !== null);
-            } catch (e) {
-                return [];
-            }
+            } catch (e) { return []; }
         }
     },
 
@@ -66,10 +88,7 @@ export const brandStorage = {
         if (isVercel && hasKV) {
             try {
                 return await kv.get(`brand:${brandId}`);
-            } catch (error) {
-                console.error('Vercel KV error (getBrandById):', error);
-                return null;
-            }
+            } catch (error) { return null; }
         } else {
             const brands = await this.getAllBrands();
             return brands.find(b => String(b.id) === String(brandId));
@@ -82,21 +101,16 @@ export const brandStorage = {
             try {
                 await kv.set(`brand:${brand.id}`, brand);
                 return true;
-            } catch (error) {
-                console.error('Vercel KV error (saveBrand):', error);
-                return false;
-            }
+            } catch (error) { return false; }
         } else {
             try {
+                const brandsDir = path.join(__dirname, 'data/brands');
                 const sanitizedName = brand.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
-                const filename = `${sanitizedName}-${brand.budgetTier}.json`;
-                await fs.mkdir(BRANDS_DIR, { recursive: true });
-                await fs.writeFile(path.join(BRANDS_DIR, filename), JSON.stringify(brand, null, 2));
+                const filename = `${sanitizedName}-${brand.budgetTier || 'mid'}.json`;
+                await fs.mkdir(brandsDir, { recursive: true });
+                await fs.writeFile(path.join(brandsDir, filename), JSON.stringify(brand, null, 2));
                 return true;
-            } catch (error) {
-                console.error('Local FS error (saveBrand):', error);
-                return false;
-            }
+            } catch (error) { return false; }
         }
     },
 
@@ -106,15 +120,13 @@ export const brandStorage = {
             try {
                 await kv.del(`brand:${brandId}`);
                 return true;
-            } catch (error) {
-                console.error('Vercel KV error (deleteBrand):', error);
-                return false;
-            }
+            } catch (error) { return false; }
         } else {
             try {
-                const files = await fs.readdir(BRANDS_DIR);
+                const brandsDir = path.join(__dirname, 'data/brands');
+                const files = await fs.readdir(brandsDir);
                 for (const file of files) {
-                    const fullPath = path.join(BRANDS_DIR, file);
+                    const fullPath = path.join(brandsDir, file);
                     const content = await fs.readFile(fullPath, 'utf8');
                     const data = JSON.parse(content);
                     if (String(data.id) === String(brandId)) {
@@ -123,10 +135,7 @@ export const brandStorage = {
                     }
                 }
                 return false;
-            } catch (error) {
-                console.error('Local FS error (deleteBrand):', error);
-                return false;
-            }
+            } catch (error) { return false; }
         }
     }
 };
