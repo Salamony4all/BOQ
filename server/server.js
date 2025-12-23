@@ -11,6 +11,7 @@ import { CleanupService } from './cleanupService.js';
 import ScraperService from './scraper.js';
 import StructureScraper from './structureScraper.js';
 import { ExcelDbManager } from './excelManager.js';
+import { brandStorage } from './storageProvider.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -191,19 +192,10 @@ if (process.env.NODE_ENV !== 'production' || process.env.VITE_DEV_SERVER) {
 
 // ... existing code ...
 
-const isVercel = process.env.VERCEL === '1';
-const BRANDS_DIR = isVercel ? '/tmp/server/data/brands' : path.join(__dirname, 'data/brands');
+// Brand persistence is now handled by brandStorage provider
+// Initialized in separate module
 
-// Ensure brands directory exists on startup
-(async () => {
-  try {
-    await fs.mkdir(BRANDS_DIR, { recursive: true });
-  } catch (e) {
-    console.error("Error creating brands dir:", e);
-  }
-})();
-
-const brandStorage = multer.diskStorage({
+const brandDiskStorage = multer.diskStorage({
   destination: async (req, file, cb) => {
     const isVercel = process.env.VERCEL === '1';
     const brandsDir = isVercel ? '/tmp/uploads/brands' : path.join(__dirname, '../uploads/brands');
@@ -221,7 +213,7 @@ const brandStorage = multer.diskStorage({
 });
 
 const brandUpload = multer({
-  storage: brandStorage,
+  storage: brandDiskStorage,
   fileFilter: (req, file, cb) => {
     if (file.mimetype.startsWith('image/')) {
       cb(null, true);
@@ -232,30 +224,9 @@ const brandUpload = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5MB
 });
 
-// Helper to read all brands
-async function getAllBrands() {
-  try {
-    const files = await fs.readdir(BRANDS_DIR);
-    const jsonFiles = files.filter(f => f.endsWith('.json'));
-    const brands = await Promise.all(jsonFiles.map(async file => {
-      try {
-        const content = await fs.readFile(path.join(BRANDS_DIR, file), 'utf8');
-        return JSON.parse(content);
-      } catch (e) {
-        console.error(`Error reading brand file ${file}:`, e);
-        return null;
-      }
-    }));
-    return brands.filter(b => b !== null);
-  } catch (e) {
-    if (e.code === 'ENOENT') return [];
-    throw e;
-  }
-}
-
 app.get('/api/brands', async (req, res) => {
   try {
-    const brands = await getAllBrands();
+    const brands = await brandStorage.getAllBrands();
     res.json(brands);
   } catch (error) {
     console.error("Failed to fetch brands:", error);
@@ -266,12 +237,7 @@ app.get('/api/brands', async (req, res) => {
 app.delete('/api/brands/:id', async (req, res) => {
   try {
     const brandId = req.params.id;
-    // In the new system, we need to find the filename. 
-    // We can guess it's {id}.json, OR we assume we name files by ID.
-    // Let's enforce filename = {id}.json for new files.
-    // For migration, we might need to scan. For now, assume id.json
-
-    await fs.unlink(path.join(BRANDS_DIR, `${brandId}.json`));
+    await brandStorage.deleteBrand(brandId);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting brand:", error);
@@ -346,10 +312,7 @@ app.post('/api/scrape-brand', async (req, res) => {
           createdAt: new Date()
         };
 
-        const sanitizedName = brandName.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-        const filename = `${sanitizedName}-${budgetTier}.json`;
-        await fs.writeFile(path.join(BRANDS_DIR, filename), JSON.stringify(newBrand, null, 2));
-
+        await brandStorage.saveBrand(newBrand);
         tasks.set(taskId, { id: taskId, status: 'completed', progress: 100, stage: 'Complete!', brand: newBrand, productCount: products.length });
       } catch (error) {
         console.error('Background scrape failed:', error);
@@ -436,10 +399,7 @@ app.post('/api/scrape-ai', async (req, res) => {
           scrapedWith: url.includes('architonic.com') ? 'Architonic-Specialized' : 'Structure-Harvest'
         };
 
-        const sanitizedName = brandNameFound.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-        const filename = `${sanitizedName}-${budgetTier}.json`;
-        await fs.writeFile(path.join(BRANDS_DIR, filename), JSON.stringify(newBrand, null, 2));
-
+        await brandStorage.saveBrand(newBrand);
         tasks.set(taskId, {
           id: taskId,
           status: 'completed',
@@ -470,22 +430,7 @@ app.post('/api/scrape-ai', async (req, res) => {
 app.get('/api/brands/:id/export', async (req, res) => {
   try {
     const brandId = req.params.id;
-    // Search all brand files for matching ID or name
-    let brand = null;
-    const files = await fs.readdir(BRANDS_DIR);
-
-    for (const file of files) {
-      if (!file.endsWith('.json')) continue;
-      try {
-        const content = await fs.readFile(path.join(BRANDS_DIR, file), 'utf8');
-        const data = JSON.parse(content);
-        // Match by ID (as string or number) or by filename pattern
-        if (String(data.id) === String(brandId) || file.startsWith(brandId)) {
-          brand = data;
-          break;
-        }
-      } catch (e) { }
-    }
+    const brand = await brandStorage.getBrandById(brandId);
 
     if (!brand) {
       return res.status(404).send('Brand not found');
@@ -512,31 +457,8 @@ app.post('/api/brands/:id/import', upload.single('file'), async (req, res) => {
 
     const products = await dbManager.importFromExcel(req.file.path);
 
-    // Find the correct brand file to update
-    const files = await fs.readdir(BRANDS_DIR);
-    let brandFilePath = null;
-    let brand = null;
-
-    for (const file of files) {
-      if (!file.endsWith('.json')) continue;
-      try {
-        const fullPath = path.join(BRANDS_DIR, file);
-        const content = await fs.readFile(fullPath, 'utf8');
-        const data = JSON.parse(content);
-        if (String(data.id) === String(brandId)) {
-          brandFilePath = fullPath;
-          brand = data;
-          break;
-        }
-      } catch (e) { }
-    }
-
-    if (!brandFilePath || !brand) {
-      return res.status(404).json({ error: 'Brand not found' });
-    }
-
     brand.products = products; // Update products
-    await fs.writeFile(brandFilePath, JSON.stringify(brand, null, 2));
+    await brandStorage.saveBrand(brand);
 
     // Clean up uploaded file
     try { await fs.unlink(req.file.path); } catch (e) { }
