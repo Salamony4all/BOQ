@@ -81,7 +81,7 @@ class CleanupService {
                 await fs.rm(fullPath, { recursive: true, force: true });
             }
         } catch (error) {
-            // console.error('Failed to clean uploads directory:', error.message);
+            console.warn('[Cleanup] Skipping bulk cleanup. Folder might not exist:', error.message);
         }
     }
 }

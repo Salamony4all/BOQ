@@ -8,7 +8,8 @@ import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { extractExcelData } from './fastExtractor.js';
 import { CleanupService } from './cleanupService.js';
-import { put, del, handleUpload } from '@vercel/blob';
+import { put, del } from '@vercel/blob';
+import { handleUpload } from '@vercel/blob/client';
 import axios from 'axios';
 import ScraperService from './scraper.js';
 import StructureScraper from './structureScraper.js';
@@ -344,9 +345,6 @@ if (process.env.NODE_ENV !== 'production' || process.env.VITE_DEV_SERVER) {
     await cleanupService.cleanupAll();
   });
 }
-
-
-// ... existing code ...
 
 // Brand persistence is now handled by brandStorage provider
 // Initialized in separate module
