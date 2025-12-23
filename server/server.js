@@ -8,6 +8,8 @@ import { promises as fs } from 'fs';
 import { fileURLToPath } from 'url';
 import { extractExcelData } from './fastExtractor.js';
 import { CleanupService } from './cleanupService.js';
+import { put, del, handleUpload } from '@vercel/blob';
+import axios from 'axios';
 import ScraperService from './scraper.js';
 import StructureScraper from './structureScraper.js';
 import { ExcelDbManager } from './excelManager.js';
@@ -98,6 +100,65 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       error: 'Failed to process Excel file',
       details: error.message
     });
+  }
+});
+
+// Large File Support: Token generation for direct browser upload to Vercel Blob
+app.post('/api/upload/blob-token', async (req, res) => {
+  try {
+    const jsonResponse = await handleUpload({
+      body: req.body,
+      request: req,
+      onBeforeGenerateToken: async (pathname) => {
+        return {
+          allowedContentTypes: ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'],
+          tokenPayload: JSON.stringify({ userId: 'anonymous' }),
+        };
+      },
+      onUploadCompleted: async ({ blob, tokenPayload }) => {
+        console.log('Blob upload completed:', blob.url);
+      },
+    });
+    return res.status(200).json(jsonResponse);
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+});
+
+// Process a file that was already uploaded to Vercel Blob
+app.post('/api/process-blob', async (req, res) => {
+  const { url, sessionId = 'default' } = req.body;
+  if (!url) return res.status(400).json({ error: 'URL is required' });
+
+  try {
+    // Download the file from Blob to /tmp for processing
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    const isVercel = process.env.VERCEL === '1';
+    const tempDir = isVercel ? '/tmp/uploads' : path.join(__dirname, '../uploads');
+    await fs.mkdir(tempDir, { recursive: true });
+
+    const fileName = `large_${Date.now()}.xlsx`;
+    const filePath = path.join(tempDir, fileName);
+    await fs.writeFile(filePath, Buffer.from(response.data));
+
+    // Track for cleanup
+    cleanupService.trackFile(sessionId, filePath);
+
+    // Extract
+    const extractedData = await extractExcelData(filePath, () => { });
+
+    // (Optional) Delete the blob after processing to save space
+    try { await del(url); } catch (e) { console.error('Failed to delete blob:', e.message); }
+
+    res.json({
+      success: true,
+      data: extractedData,
+      progress: 100,
+      stage: 'Complete'
+    });
+  } catch (error) {
+    console.error('Blob processing error:', error);
+    res.status(500).json({ error: 'Failed to process blob file', details: error.message });
   }
 });
 

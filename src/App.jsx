@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { upload as blobUpload } from '@vercel/blob/client';
 import FileUpload from './components/FileUpload';
 import ProgressModal from './components/ProgressModal';
 import TableViewer from './components/TableViewer';
@@ -44,75 +45,102 @@ function AppContent({ onOpenSettings }) {
     }, 4000);
     return () => clearInterval(interval);
   }, []);
-
   const handleFileUpload = async (file) => {
-    // Vercel strict 4.5MB limit check
-    if (window.location.hostname !== 'localhost' && file.size > 4.4 * 1024 * 1024) {
-      setError('File too large for live server (Max 4.5MB). Please remove some images or split the file.');
-      return;
-    }
-
     setShowLanding(false);
     setUploading(true);
     setProgress(0);
-    setStage('Uploading');
+    setStage('Starting...');
     setError(null);
     setExtractedData(null);
 
-    const formData = new FormData();
-    formData.append('file', file);
+    const isLarge = file.size > 4.4 * 1024 * 1024;
+    const useBlob = isLarge && window.location.hostname !== 'localhost';
 
     try {
-      const xhr = new XMLHttpRequest();
-
-      xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-          const percentComplete = (e.loaded / e.total) * 25;
-          setProgress(percentComplete);
-        }
-      });
-
-      xhr.addEventListener('load', () => {
-        if (xhr.status === 200) {
-          const response = JSON.parse(xhr.responseText);
-          setExtractedData(response.data);
-          setProgress(100);
-          setStage('Complete');
-          setTimeout(() => setUploading(false), 500);
-        } else {
-          throw new Error('Upload failed');
-        }
-      });
-
-      xhr.addEventListener('error', () => {
-        setError('Network error occurred');
-        setUploading(false);
-      });
-
-      xhr.open('POST', `${API_BASE}/api/upload`);
-      xhr.setRequestHeader('x-session-id', sessionId);
-
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev < 25) return prev;
-          if (prev < 90) return prev + 5;
-          return prev;
+      if (useBlob) {
+        setStage('Uploading to Cloud (Large File)');
+        // Direct Client-Side Upload to Vercel Blob
+        const blob = await blobUpload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: `${API_BASE}/api/upload/blob-token`,
+          onUploadProgress: (progressEvent) => {
+            setProgress(progressEvent.percentage * 0.5); // First 50% is upload
+          },
         });
 
-        if (progress > 25 && progress < 50) setStage('Processing');
-        else if (progress >= 50 && progress < 90) setStage('Extracting Tables');
-        else if (progress >= 90) setStage('Finalizing');
-      }, 300);
+        setStage('Processing Large File...');
+        // Now ask the server to process the URL
+        const res = await fetch(`${API_BASE}/api/process-blob`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: blob.url, sessionId })
+        });
 
-      xhr.addEventListener('loadend', () => {
-        clearInterval(progressInterval);
-      });
+        if (!res.ok) throw new Error('Cloud processing failed');
+        const response = await res.json();
+        setExtractedData(response.data);
+        setProgress(100);
+        setStage('Complete');
+        setTimeout(() => setUploading(false), 500);
 
-      xhr.send(formData);
+      } else {
+        // Standard XHR Upload for small files
+        setStage('Uploading');
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const percentComplete = (e.loaded / e.total) * 25;
+            setProgress(percentComplete);
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status === 200) {
+            const response = JSON.parse(xhr.responseText);
+            setExtractedData(response.data);
+            setProgress(100);
+            setStage('Complete');
+            setTimeout(() => setUploading(false), 500);
+          } else {
+            console.error('Upload error details:', xhr.responseText);
+            throw new Error('Upload failed');
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          setError('Network error occurred');
+          setUploading(false);
+        });
+
+        xhr.open('POST', `${API_BASE}/api/upload`);
+        xhr.setRequestHeader('x-session-id', sessionId);
+
+        const progressInterval = setInterval(() => {
+          setProgress(prev => {
+            if (prev < 25) return prev;
+            if (prev < 90) return prev + 5;
+            return prev;
+          });
+
+          if (progress > 25 && progress < 50) setStage('Processing');
+          else if (progress >= 50 && progress < 90) setStage('Extracting Tables');
+          else if (progress >= 90) setStage('Finalizing');
+        }, 300);
+
+        xhr.addEventListener('loadend', () => {
+          clearInterval(progressInterval);
+        });
+
+        xhr.send(formData);
+      }
 
     } catch (err) {
-      console.error('Upload error:', err);
-      setError(err.message || 'Failed to upload file');
+      console.error('Upload/Process error:', err);
+      setError(err.message || 'Failed to process file');
       setUploading(false);
     }
   };
