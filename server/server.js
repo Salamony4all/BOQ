@@ -170,6 +170,35 @@ app.post('/api/process-blob', async (req, res) => {
   }
 });
 
+// Debug endpoint to check storage configuration
+app.get('/api/debug-storage', async (req, res) => {
+  const token = process.env.BLOB_READ_WRITE_TOKEN;
+  const isVercel = process.env.VERCEL === '1';
+
+  const status = {
+    env: isVercel ? 'Vercel' : 'Local',
+    tokenPresent: !!token,
+    tokenPrefix: token ? token.substring(0, 10) + '...' : 'none',
+    timestamp: new Date().toISOString()
+  };
+
+  try {
+    if (token) {
+      // Try a simple put to verify
+      const testBlob = await put('debug/test.txt', 'test', { access: 'public' });
+      status.canWrite = true;
+      status.testUrl = testBlob.url;
+      // Cleanup
+      await del(testBlob.url);
+    }
+  } catch (err) {
+    status.canWrite = false;
+    status.writeError = err.message;
+  }
+
+  res.json(status);
+});
+
 // Cleanup endpoint
 app.post('/api/cleanup', async (req, res) => {
   const sessionId = req.body.sessionId || 'default';
