@@ -11,7 +11,7 @@ const BRANDS_DIR = isVercel ? '/tmp/server/data/brands' : path.join(__dirname, '
 
 export const brandStorage = {
     async getAllBrands() {
-        const hasKV = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL;
+        const hasKV = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
         if (isVercel && hasKV) {
             try {
                 let keys = await kv.keys('brand:*');
@@ -62,7 +62,7 @@ export const brandStorage = {
     },
 
     async getBrandById(brandId) {
-        const hasKV = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL;
+        const hasKV = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
         if (isVercel && hasKV) {
             try {
                 return await kv.get(`brand:${brandId}`);
@@ -77,7 +77,7 @@ export const brandStorage = {
     },
 
     async saveBrand(brand) {
-        const hasKV = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL;
+        const hasKV = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
         if (isVercel && hasKV) {
             try {
                 await kv.set(`brand:${brand.id}`, brand);
@@ -101,7 +101,7 @@ export const brandStorage = {
     },
 
     async deleteBrand(brandId) {
-        const hasKV = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL;
+        const hasKV = process.env.KV_REST_API_URL || process.env.STORAGE_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
         if (isVercel && hasKV) {
             try {
                 await kv.del(`brand:${brandId}`);
