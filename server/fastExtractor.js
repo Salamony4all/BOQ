@@ -111,33 +111,40 @@ async function extractImagesAndMap(filePath, imagesDir) {
         // 1. Extract all media files
         const mediaEntries = zipEntries.filter(entry => entry.entryName.match(/^xl[\\\/]media[\\\/]/i));
         const savedImages = {};
+        const timestamp = Date.now();
+        console.log(`[FastExtractor] Found ${mediaEntries.length} media files to process.`);
 
-        for (const entry of mediaEntries) {
-            const fileName = path.basename(entry.entryName);
-            const data = entry.getData();
+        // Process in small batches to avoid timeouts/rate limits
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < mediaEntries.length; i += BATCH_SIZE) {
+            const batch = mediaEntries.slice(i, i + BATCH_SIZE);
+            await Promise.all(batch.map(async (entry) => {
+                const fileName = path.basename(entry.entryName);
+                const data = entry.getData();
 
-            // Try Vercel Blob first for production persistence
-            if (process.env.BLOB_READ_WRITE_TOKEN || process.env.VERCEL) {
-                try {
-                    const blob = await put(`boq/images/${Date.now()}_${fileName}`, data, {
-                        access: 'public',
-                    });
-                    savedImages[fileName] = blob.url;
-                    continue;
-                } catch (err) {
-                    console.error('Vercel Blob upload failed, falling back to local:', err.message);
+                // Try Vercel Blob first (only if token is present)
+                if (process.env.BLOB_READ_WRITE_TOKEN) {
+                    try {
+                        const blob = await put(`boq/images/${timestamp}_${fileName}`, data, {
+                            access: 'public',
+                        });
+                        savedImages[fileName] = blob.url;
+                        return;
+                    } catch (err) {
+                        console.error(`Vercel Blob upload failed for ${fileName}:`, err.message);
+                    }
                 }
-            }
 
-            // Local fallback (or if not on Vercel)
-            const targetName = `${Date.now()}_${fileName}`;
-            const targetPath = path.join(imagesDir, targetName);
-            try {
-                fsSync.writeFileSync(targetPath, data);
-                savedImages[fileName] = `/uploads/images/${targetName}`;
-            } catch (err) {
-                console.error(`   > Failed to write ${fileName} locally:`, err);
-            }
+                // Local fallback
+                const targetName = `${timestamp}_${fileName}`;
+                const targetPath = path.join(imagesDir, targetName);
+                try {
+                    fsSync.writeFileSync(targetPath, data);
+                    savedImages[fileName] = `/uploads/images/${targetName}`;
+                } catch (err) {
+                    console.error(`   > Failed to write ${fileName} locally:`, err);
+                }
+            }));
         }
 
         // 2. Parse relationships to map Cell -> Image
@@ -239,13 +246,25 @@ async function extractImagesAndMap(filePath, imagesDir) {
                 const blip = blipFill?.['a:blip'];
                 const rId = blip?.['r:embed'];
 
-                if (rId && rIdToMedia[rId] && savedImages[rIdToMedia[rId]]) {
+                const imageKey = rIdToMedia[rId];
+                if (rId && imageKey && savedImages[imageKey]) {
                     imageLocations.push({
                         sheetIndex: sheetId,
                         row: row,
                         col: col,
-                        url: savedImages[rIdToMedia[rId]],
-                        extension: path.extname(rIdToMedia[rId]).substring(1)
+                        url: savedImages[imageKey],
+                        extension: path.extname(imageKey).substring(1)
+                    });
+                } else if (rId && imageKey) {
+                    // Fallback to filename if not in savedImages (helps catch bugs)
+                    console.log(`[FastExtractor] Warning: Image ${imageKey} not found in savedImages map`);
+                    const fallbackUrl = `/uploads/images/${timestamp}_${imageKey}`;
+                    imageLocations.push({
+                        sheetIndex: sheetId,
+                        row: row,
+                        col: col,
+                        url: fallbackUrl,
+                        extension: path.extname(imageKey).substring(1)
                     });
                 }
             });
