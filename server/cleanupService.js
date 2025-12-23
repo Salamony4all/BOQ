@@ -1,4 +1,3 @@
-
 import { promises as fs } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -10,14 +9,11 @@ const __dirname = path.dirname(__filename);
  * Service to manage file cleanup on session end
  */
 class CleanupService {
-    // ... existing constructor ... 
     constructor() {
         this.sessions = new Map(); // sessionId -> Set of file paths
         this.cleanupTimeout = 30 * 60 * 1000; // 30 minutes
         this.timers = new Map(); // sessionId -> timeout
     }
-
-    // ... existing methods ...
 
     trackFile(sessionId, filePath) {
         if (!this.sessions.has(sessionId)) {
@@ -42,7 +38,9 @@ class CleanupService {
         if (!filePaths || filePaths.size === 0) return;
         for (const filePath of filePaths) {
             try {
-                await fs.unlink(filePath);
+                // Only attempt delete if file exists
+                const exists = await fs.access(filePath).then(() => true).catch(() => false);
+                if (exists) await fs.unlink(filePath);
             } catch (error) {
                 console.error(`Failed to delete ${filePath}:`, error.message);
             }
@@ -58,30 +56,24 @@ class CleanupService {
         for (const sessionId of this.sessions.keys()) {
             await this.cleanupSession(sessionId);
         }
+
         try {
-            const uploadsDir = path.join(__dirname, '../uploads');
-            // Be careful to not delete ../uploads/brands if it exists!
-            // The previous logic was: await fs.rm(uploadsDir, { recursive: true, force: true });
-            // This deletes EVERYTHING.
+            const isVercel = process.env.VERCEL === '1';
+            const uploadsDir = isVercel ? '/tmp/uploads' : path.join(__dirname, '../uploads');
 
-            // Let's only delete 'images' subdir and files in root uploads
-            // Or ensure we don't delete 'brands'
+            const exists = await fs.access(uploadsDir).then(() => true).catch(() => false);
+            if (!exists) return;
 
-            // For now, let's just create if missing, but maybe we shouldn't wipe the whole dir if brands are there?
-            // User requested "separate file for each brand". I put JSON in server/data/brands.
-            // But Multer puts IMAGES in uploads/brands.
-            // If I wipe uploads/, I wipe brand images.
-            // FIX: Only wipe uploads/tmp or similar? Or iterate.
-
-            // Let's iterate and delete everything EXCEPT 'brands' folder.
             const entries = await fs.readdir(uploadsDir, { withFileTypes: true });
             for (const entry of entries) {
                 if (entry.name === 'brands') continue;
                 const fullPath = path.join(uploadsDir, entry.name);
-                await fs.rm(fullPath, { recursive: true, force: true });
+                try {
+                    await fs.rm(fullPath, { recursive: true, force: true });
+                } catch (e) { /* silent skip */ }
             }
         } catch (error) {
-            console.warn('[Cleanup] Skipping bulk cleanup. Folder might not exist:', error.message);
+            console.warn('[Cleanup] Bulk cleanup skipped:', error.message);
         }
     }
 }
