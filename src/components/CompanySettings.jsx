@@ -5,14 +5,14 @@ import styles from '../styles/CompanySettings.module.css';
 export default function CompanySettings({ isModal = false, onClose = null }) {
     const {
         companyName,
-        companyLogo,
+        logo: storedLogo,
         updateProfile,
         processLogoFile,
         clearProfile
     } = useCompanyProfile();
 
     const [name, setName] = useState(companyName || '');
-    const [logo, setLogo] = useState(companyLogo || null);
+    const [logo, setLogo] = useState(storedLogo || null); // This is the logo object {base64, width, height, isLight, whiteLogo}
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -26,9 +26,9 @@ export default function CompanySettings({ isModal = false, onClose = null }) {
         setIsProcessing(true);
 
         try {
-            const base64 = await processLogoFile(file);
-            setLogo(base64);
-            setSuccess('Logo uploaded successfully!');
+            const logoData = await processLogoFile(file);
+            setLogo(logoData);
+            setSuccess('Logo uploaded and specifications detected!');
             setTimeout(() => setSuccess(null), 3000);
         } catch (err) {
             setError(err.message);
@@ -73,7 +73,6 @@ export default function CompanySettings({ isModal = false, onClose = null }) {
     };
 
     const handleSkip = () => {
-        // Save with just minimal info
         updateProfile(name.trim() || 'My Company', logo);
         if (onClose) onClose();
     };
@@ -108,18 +107,18 @@ export default function CompanySettings({ isModal = false, onClose = null }) {
                         />
                     </div>
 
-                    {/* Company Logo */}
+                    {/* Company Logo - Simplified to ONE button */}
                     <div className={styles.field}>
                         <label className={styles.label}>
                             Company Logo
-                            <span className={styles.hint}>(Max 500KB - PNG, JPG, SVG)</span>
+                            <span className={styles.hint}>(Max 1MB - Transparent PNG Recommended)</span>
                         </label>
 
                         <div className={styles.logoSection}>
                             {/* Logo Preview */}
-                            <div className={styles.logoPreview}>
+                            <div className={`${styles.logoPreview} ${logo?.isLight ? styles.logoPreviewWhite : ''}`}>
                                 {logo ? (
-                                    <img src={logo} alt="Company Logo" className={styles.logoImage} />
+                                    <img src={logo.base64} alt="Company Logo" className={styles.logoImage} />
                                 ) : (
                                     <div className={styles.logoPlaceholder}>
                                         <span className={styles.placeholderText}>No Logo</span>
@@ -138,16 +137,21 @@ export default function CompanySettings({ isModal = false, onClose = null }) {
                                     id="logo-upload"
                                 />
                                 <label htmlFor="logo-upload" className={styles.uploadBtn}>
-                                    {isProcessing ? 'Processing...' : 'Upload Logo'}
+                                    {isProcessing ? 'Detecting...' : logo ? 'Change Logo' : 'Upload Logo'}
                                 </label>
                                 {logo && (
-                                    <button
-                                        type="button"
-                                        className={styles.removeBtn}
-                                        onClick={handleRemoveLogo}
-                                    >
-                                        Remove
-                                    </button>
+                                    <div className={styles.detectedSpecs}>
+                                        <span className={styles.specItem}>✅ {logo.width}x{logo.height}px</span>
+                                        <span className={styles.specItem}>✅ {logo.isLight ? 'Light variant' : 'Dark variant'}</span>
+                                        {!logo.isLight && <span className={styles.specItem}>✅ Auto-header version created</span>}
+                                        <button
+                                            type="button"
+                                            className={styles.removeBtnInline}
+                                            onClick={handleRemoveLogo}
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
                                 )}
                             </div>
                         </div>

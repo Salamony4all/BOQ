@@ -6,6 +6,8 @@ import MultiBudgetModal from './MultiBudgetModal';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+import { useCompanyProfile } from '../context/CompanyContext';
+
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
 const getFullUrl = (url) => {
@@ -15,6 +17,7 @@ const getFullUrl = (url) => {
 };
 
 function TableViewer({ data }) {
+    const { companyName, logoWhite, logoBlue } = useCompanyProfile();
     const [selectedImage, setSelectedImage] = useState(null);
     const [tables, setTables] = useState([]); // Base Data
     const [costingFactors, setCostingFactors] = useState(null);
@@ -99,25 +102,36 @@ function TableViewer({ data }) {
 
     // --- Export Handlers (Premium Styled) ---
 
-    // Helper: Load image as data URL WITH dimensions for aspect ratio
-    const getImageData = (url) => {
+    // Helper: Load image as data URL with size and format optimization
+    const getImageData = (url, options = {}) => {
+        // Explicitly define these in the function scope
+        const maxWidth = options.maxWidth || 1000;
+        const format = options.format || 'image/jpeg';
+        const quality = options.quality || 0.85;
+
         return new Promise((resolve) => {
             const img = new Image();
             img.crossOrigin = "Anonymous";
             img.src = url;
             img.onload = () => {
                 const canvas = document.createElement("canvas");
-                canvas.width = img.width;
-                canvas.height = img.height;
+                const ratio = Math.min(1, maxWidth / img.width);
+                canvas.width = img.width * ratio;
+                canvas.height = img.height * ratio;
                 const ctx = canvas.getContext("2d");
-                ctx.drawImage(img, 0, 0);
-                ctx.globalCompositeOperation = 'destination-over';
-                ctx.fillStyle = "white";
-                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                if (format === 'image/jpeg') {
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                } else {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                }
+
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 resolve({
-                    dataUrl: canvas.toDataURL("image/jpeg"),
-                    width: img.width,
-                    height: img.height
+                    dataUrl: canvas.toDataURL(format, quality),
+                    width: canvas.width,
+                    height: canvas.height
                 });
             };
             img.onerror = () => resolve(null);
@@ -156,6 +170,18 @@ function TableViewer({ data }) {
         doc.setFontSize(32);
         doc.setFont('helvetica', 'bold');
         doc.text('COMMERCIAL OFFER', pageWidth / 2, 35, { align: 'center' });
+
+        // Add Company Logo to Cover if available
+        const coverLogo = logoWhite || logoBlue;
+        if (coverLogo) {
+            try {
+                const docLogo = await getImageData(coverLogo, { format: 'image/png', maxWidth: 800 });
+                if (docLogo) {
+                    const fit = calcFitSize(docLogo.width, docLogo.height, 60, 25);
+                    doc.addImage(docLogo.dataUrl, 'PNG', (pageWidth - fit.w) / 2, 75, fit.w, fit.h);
+                }
+            } catch (e) { }
+        }
 
         // Subtitle
         doc.setFontSize(14);
@@ -214,6 +240,18 @@ function TableViewer({ data }) {
             doc.setFont('helvetica', 'bold');
             doc.text(table.sheetName || 'Offer Schedule', 10, 13);
 
+            // Company Logo in Header
+            const headerLogo = logoWhite || logoBlue;
+            if (headerLogo) {
+                try {
+                    const docLogo = await getImageData(headerLogo, { format: 'image/png', maxWidth: 400 });
+                    if (docLogo) {
+                        const fit = calcFitSize(docLogo.width, docLogo.height, 35, 12);
+                        doc.addImage(docLogo.dataUrl, 'PNG', pageWidth - 10 - fit.w, 4, fit.w, fit.h);
+                    }
+                } catch (e) { }
+            }
+
             // Find column indices
             const header = table.header || [];
             const imgColIdx = header.findIndex(h => /image|photo|picture/i.test(h));
@@ -264,7 +302,7 @@ function TableViewer({ data }) {
                         for (const img of allImages) {
                             if (img?.url) {
                                 try {
-                                    const imgResult = await getImageData(getFullUrl(img.url));
+                                    const imgResult = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
                                     if (imgResult) imageDataMap[rowIdx].push(imgResult);
                                 } catch (e) { }
                             }
@@ -424,7 +462,7 @@ function TableViewer({ data }) {
                         for (const img of allImages) {
                             if (img?.url) {
                                 try {
-                                    const imgResult = await getImageData(getFullUrl(img.url));
+                                    const imgResult = await getImageData(getFullUrl(img.url), { maxWidth: 300, format: 'image/jpeg' });
                                     if (imgResult) {
                                         const base64 = imgResult.dataUrl.split(',')[1];
                                         const imageId = workbook.addImage({
@@ -489,12 +527,13 @@ function TableViewer({ data }) {
                         images.forEach((imgData, idx) => {
                             const col = idx % cols;
                             const gridRow = Math.floor(idx / cols);
-                            const offsetCol = imgColIdx + (col * 0.5) + 0.03;
-                            const offsetRow = excelRow - 1 + (gridRow * 0.95) + 0.03;
+                            const fit = calcFitSize(imgData.width, imgData.height, imgSize, imgSize);
+                            const offsetCol = imgColIdx + (col * 0.5) + (0.5 - fit.w / baseImgSize) / 2 + 0.03;
+                            const offsetRow = excelRow - 1 + (gridRow * 0.95) + (0.95 - fit.h / rowHeight) / 2 + 0.03;
 
                             ws.addImage(imgData.imageId, {
                                 tl: { col: offsetCol, row: offsetRow },
-                                ext: { width: imgSize, height: imgSize }
+                                ext: { width: fit.w, height: fit.h }
                             });
                         });
                     }
@@ -570,6 +609,18 @@ function TableViewer({ data }) {
                 doc.setFont('helvetica', 'bold');
                 doc.text('MATERIAL APPROVAL SHEET', pageWidth / 2, 15, { align: 'center' });
 
+                // Company Logo in Header
+                const masHeaderLogo = logoWhite || logoBlue;
+                if (masHeaderLogo) {
+                    try {
+                        const docLogo = await getImageData(masHeaderLogo, { format: 'image/png', maxWidth: 400 });
+                        if (docLogo) {
+                            const fit = calcFitSize(docLogo.width, docLogo.height, 35, 12);
+                            doc.addImage(docLogo.dataUrl, 'PNG', pageWidth - 10 - fit.w, 6, fit.w, fit.h);
+                        }
+                    } catch (e) { }
+                }
+
                 // Info bar
                 doc.setFillColor(...colors.lightBg);
                 doc.rect(0, 27, pageWidth, 12, 'F');
@@ -586,12 +637,12 @@ function TableViewer({ data }) {
                 const allImages = imageCell?.images || (imageCell?.image ? [imageCell.image] : []);
                 let contentY = 45;
 
-                // Load all images
+                // Load all images (JPEG for MAS products)
                 const imageResults = [];
                 for (const img of allImages.slice(0, 4)) {
                     if (img?.url) {
                         try {
-                            const imgResult = await getImageData(getFullUrl(img.url));
+                            const imgResult = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
                             if (imgResult) imageResults.push(imgResult);
                         } catch (e) { }
                     }
@@ -615,7 +666,7 @@ function TableViewer({ data }) {
                         doc.setDrawColor(...colors.border);
                         doc.setLineWidth(0.3);
                         doc.roundedRect(imgX - 3, contentY - 2, fit.w + 6, fit.h + 4, 2, 2, 'FD');
-                        doc.addImage(img.dataUrl, 'JPEG', imgX, contentY, fit.w, fit.h, '', 'FAST');
+                        doc.addImage(img.dataUrl, 'PNG', imgX, contentY, fit.w, fit.h, '', 'FAST');
                         contentY += fit.h + 12;
                     } else if (imageResults.length === 2) {
                         // Two images - side by side
@@ -837,16 +888,28 @@ function TableViewer({ data }) {
                     fontSize: 16, bold: true, color: 'FFFFFF', fontFace: 'Arial'
                 });
 
-                // Company logo placeholder area (top right)
-                slide.addShape('rect', {
-                    x: 8.2, y: 0.1, w: 1.5, h: 0.5,
-                    fill: { color: 'FFFFFF' },
-                    line: { color: brandColors.border, pt: 0.5 }
-                });
-                slide.addText('LOGO', {
-                    x: 8.2, y: 0.25, w: 1.5, h: 0.2,
-                    fontSize: 8, color: brandColors.lightText, align: 'center'
-                });
+                // Company logo area (top right)
+                // PPT master has a white background in the logo area, so prefer original logo
+                const pptLogo = logoBlue || logoWhite;
+                if (pptLogo) {
+                    try {
+                        const logoImg = await getImageData(pptLogo, { format: 'image/png', maxWidth: 400 });
+                        if (logoImg) {
+                            const fit = calcFitSize(logoImg.width, logoImg.height, 1.5 * 96, 0.5 * 96);
+                            const fitW = fit.w / 96;
+                            const fitH = fit.h / 96;
+                            slide.addImage({
+                                data: logoImg.dataUrl,
+                                x: 8.2 + (1.5 - fitW) / 2, y: 0.1 + (0.5 - fitH) / 2, w: fitW, h: fitH
+                            });
+                        }
+                    } catch (e) { }
+                } else {
+                    slide.addText(companyName || 'LOGO', {
+                        x: 8.2, y: 0.25, w: 1.5, h: 0.2,
+                        fontSize: 8, color: brandColors.lightText, align: 'center'
+                    });
+                }
 
                 // ===== LEFT SIDE: IMAGE(S) - Pre-load and calculate exact dimensions =====
                 const imgAreaX = 0.25;
@@ -1147,14 +1210,22 @@ function TableViewer({ data }) {
                 doc.text(`Item ${itemNumber}: ${titleText}`, 8, 15);
 
                 // Company logo area (top right)
-                doc.setFillColor(...colors.bg);
-                doc.setDrawColor(...colors.border);
-                doc.setLineWidth(0.3);
-                doc.roundedRect(pageWidth - 42, 4, 38, 18, 2, 2, 'FD');
-                doc.setTextColor(...colors.lightText);
-                doc.setFontSize(7);
-                doc.setFont('helvetica', 'normal');
-                doc.text('ALSHAYA ENTERPRISES', pageWidth - 23, 14, { align: 'center' });
+                // This PDF version has a white background in the header area, so prefer original logo
+                const pptPdfLogo = logoBlue || logoWhite;
+                if (pptPdfLogo) {
+                    try {
+                        const logoImg = await getImageData(pptPdfLogo);
+                        if (logoImg) {
+                            const fit = calcFitSize(logoImg.width, logoImg.height, 35, 15);
+                            doc.addImage(logoImg.dataUrl, 'PNG', pageWidth - 10 - fit.w, 5, fit.w, fit.h);
+                        }
+                    } catch (e) { }
+                } else {
+                    doc.setTextColor(...colors.lightText);
+                    doc.setFontSize(7);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(companyName || 'BOQFLOW', pageWidth - 23, 14, { align: 'center' });
+                }
 
                 // ===== LEFT SIDE: IMAGE(S) =====
                 const imgAreaX = 8;
@@ -1187,7 +1258,7 @@ function TableViewer({ data }) {
                     const fit = calcFitSize(img.width, img.height, maxW, maxH);
                     const centeredX = imgAreaX + (imgAreaW - fit.w) / 2;
                     const centeredY = imgAreaY + (imgAreaH - fit.h) / 2;
-                    doc.addImage(img.dataUrl, 'JPEG', centeredX, centeredY, fit.w, fit.h, '', 'FAST');
+                    doc.addImage(img.dataUrl, 'PNG', centeredX, centeredY, fit.w, fit.h, '', 'FAST');
                 } else if (imageResults.length === 2) {
                     // 2 images - side by side
                     const imgW = (imgAreaW - 10) / 2;
@@ -1196,7 +1267,7 @@ function TableViewer({ data }) {
                         const fit = calcFitSize(img.width, img.height, imgW, imgH);
                         const x = imgAreaX + 3 + idx * (imgW + 4) + (imgW - fit.w) / 2;
                         const y = imgAreaY + 3 + (imgH - fit.h) / 2;
-                        doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, '', 'FAST');
+                        doc.addImage(img.dataUrl, 'PNG', x, y, fit.w, fit.h, '', 'FAST');
                     });
                 } else if (imageResults.length >= 3) {
                     // 3+ images - 2x2 grid

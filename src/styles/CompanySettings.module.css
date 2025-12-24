@@ -138,6 +138,12 @@
     text-align: center;
 }
 
+.logoPreviewWhite {
+    background: #3b82f6 !important;
+    /* Visible background for white logos */
+    border-style: solid !important;
+}
+
 .placeholderText {
     color: #64748b;
     font-size: 0.75rem;
@@ -181,6 +187,32 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
+}
+
+.removeBtnInline {
+    background: transparent;
+    border: none;
+    color: #ef4444;
+    padding: 0.2rem 0;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-decoration: underline;
+    margin-top: 0.2rem;
+    text-align: left;
+}
+
+.detectedSpecs {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-top: 0.5rem;
+}
+
+.specItem {
+    font-size: 0.75rem;
+    color: #10b981;
+    font-weight: 500;
 }
 
 .removeBtn:hover {

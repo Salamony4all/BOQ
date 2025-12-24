@@ -21,6 +21,7 @@ const CAROUSEL_IMAGES = [
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
 function AppContent({ onOpenSettings }) {
+  const { logoWhite, companyName } = useCompanyProfile();
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -173,7 +174,11 @@ function AppContent({ onOpenSettings }) {
                 <span className={styles.hamburgerLine}></span>
               </button>
               <div className={styles.logoSmall} onClick={() => { setShowLanding(true); setExtractedData(null); }}>
-                <span className={styles.logoTextSmall}>BOQFLOW</span>
+                {logoWhite ? (
+                  <img src={logoWhite} alt={companyName} className={styles.headerLogo} />
+                ) : (
+                  <span className={styles.logoTextSmall}>{companyName || 'BOQFLOW'}</span>
+                )}
               </div>
             </header>
 

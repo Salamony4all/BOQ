@@ -17,7 +17,7 @@ const getFullUrl = (url) => {
 };
 
 export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
-    const { companyLogo: globalCompanyLogo } = useCompanyProfile();
+    const { logoWhite, logoBlue, updateProfile, processLogoFile } = useCompanyProfile();
     const [activeTier, setActiveTier] = useState('mid'); // budgetary, mid, high
     const [previewImage, setPreviewImage] = useState(null); // URL of image to preview
     const [previewLogo, setPreviewLogo] = useState(null); // URL of brand logo for preview
@@ -258,34 +258,46 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         });
     };
 
-    // Helper to load image as data URL (uses proxy for external URLs)
-    const getImageData = async (url) => {
+    // Helper to load image as data URL with size and format optimization
+    const getImageData = async (url, options = {}) => {
         if (!url) return null;
 
+        // Explicitly define these in the function scope
+        const maxWidth = options.maxWidth || 1000;
+        const format = options.format || 'image/jpeg';
+        const quality = options.quality || 0.85;
+
         // Check if it's an external URL (not from our server)
-        const isExternal = url.startsWith('http') && !url.includes('localhost:3001');
+        const isExternal = url.startsWith('http') && !url.includes('localhost:3001') && !url.includes(window.location.hostname);
 
         if (isExternal) {
-            // Use server proxy for external images
             try {
                 const proxyUrl = `${API_BASE}/api/image-proxy?url=${encodeURIComponent(url)}`;
                 const response = await fetch(proxyUrl);
                 if (!response.ok) return null;
                 const data = await response.json();
-                if (data.dataUrl) {
-                    // Get dimensions by loading the image
-                    return new Promise((resolve) => {
-                        const img = new Image();
-                        img.src = data.dataUrl;
-                        img.onload = () => resolve({ dataUrl: data.dataUrl, width: img.width, height: img.height });
-                        img.onerror = () => resolve(null);
-                    });
-                }
-                return null;
-            } catch (e) {
-                console.error('Proxy fetch error:', e);
-                return null;
-            }
+
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement("canvas");
+                        const ratio = Math.min(1, maxWidth / img.width);
+                        canvas.width = img.width * ratio;
+                        canvas.height = img.height * ratio;
+                        const ctx = canvas.getContext("2d");
+                        if (format === 'image/jpeg') {
+                            ctx.fillStyle = "#FFFFFF";
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        } else {
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        }
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve({ dataUrl: canvas.toDataURL(format, quality), width: canvas.width, height: canvas.height });
+                    };
+                    img.onerror = () => resolve(null);
+                    img.src = data.dataUrl;
+                });
+            } catch (e) { return null; }
         } else {
             // Local images - load directly
             return new Promise((resolve) => {
@@ -294,13 +306,18 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 img.src = url;
                 img.onload = () => {
                     const canvas = document.createElement("canvas");
-                    canvas.width = img.width;
-                    canvas.height = img.height;
+                    const ratio = Math.min(1, maxWidth / img.width);
+                    canvas.width = img.width * ratio;
+                    canvas.height = img.height * ratio;
                     const ctx = canvas.getContext("2d");
-                    ctx.fillStyle = "white";
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    ctx.drawImage(img, 0, 0);
-                    resolve({ dataUrl: canvas.toDataURL("image/jpeg"), width: img.width, height: img.height });
+                    if (format === 'image/jpeg') {
+                        ctx.fillStyle = "#FFFFFF";
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    } else {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    }
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve({ dataUrl: canvas.toDataURL(format, quality), width: canvas.width, height: canvas.height });
                 };
                 img.onerror = () => resolve(null);
             });
@@ -340,12 +357,15 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         doc.text(`Multi-Budget Offer - ${activeTier.charAt(0).toUpperCase() + activeTier.slice(1)} Tier`, 10, 12);
 
         // Top Right Logo (Now Company Logo from Settings)
-        if (globalCompanyLogo) {
+        // Header is blue, so we use the White logo variant if available
+        const logoToUse = logoWhite || logoBlue;
+        if (logoToUse) {
             try {
-                const docLogo = await getImageData(globalCompanyLogo);
+                const docLogo = await getImageData(logoToUse, { format: 'image/png', maxWidth: 800 });
                 if (docLogo) {
                     const logoFit = calcFitSize(docLogo.width, docLogo.height, 35, 12);
-                    doc.addImage(docLogo.dataUrl, 'JPEG', pageWidth - 10 - logoFit.w, 3, logoFit.w, logoFit.h);
+                    // Use PNG for transparency, remove background box
+                    doc.addImage(docLogo.dataUrl, 'PNG', pageWidth - 10 - logoFit.w, 3, logoFit.w, logoFit.h);
                 }
             } catch (e) { }
         }
@@ -355,7 +375,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             ? ['Sr.', 'Ref Image', 'Original Desc', 'Brand Image', 'Brand Desc', 'Qty', 'Unit', 'Rate', 'Amount']
             : ['Sr.', 'Image', 'Description', 'Qty', 'Unit', 'Rate', 'Amount'];
 
-        // Pre-load all images
+        // Pre-load all images (Use JPEG for products to save space)
         const imageDataMap = {};
         for (let i = 0; i < tier.rows.length; i++) {
             const row = tier.rows[i];
@@ -363,21 +383,21 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             if (row.imageRef) {
                 try {
                     const url = getFullUrl(row.imageRef);
-                    const result = await getImageData(url);
+                    const result = await getImageData(url, { maxWidth: 600, format: 'image/jpeg' });
                     if (result) imageDataMap[`ref_${i}`] = result;
                 } catch (e) { console.log('Ref image load error:', e); }
             }
             // Brand product image
             if (row.brandImage) {
                 try {
-                    const result = await getImageData(row.brandImage);
+                    const result = await getImageData(row.brandImage, { maxWidth: 800, format: 'image/jpeg' });
                     if (result) imageDataMap[`brand_${i}`] = result;
                 } catch (e) { console.log('Brand image load error:', e); }
             }
-            // Brand logo
+            // Brand logo (Keep PNG for brand logos)
             if (row.brandLogo) {
                 try {
-                    const result = await getImageData(row.brandLogo);
+                    const result = await getImageData(row.brandLogo, { format: 'image/png', maxWidth: 400 });
                     if (result) imageDataMap[`logo_${i}`] = result;
                 } catch (e) { console.log('Logo load error:', e); }
             }
@@ -393,31 +413,38 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             }
         });
 
+        // Table Generation
         autoTable(doc, {
             startY: 25,
             head: [header],
             body: body,
             theme: 'grid',
-            styles: { fontSize: 8, cellPadding: 2, valign: 'middle', overflow: 'linebreak' },
+            tableWidth: 'auto', // Let autoTable handle width but provide hint
+            styles: {
+                fontSize: 8,
+                cellPadding: 2,
+                overflow: 'linebreak',
+                valign: 'middle'
+            },
             headStyles: { fillColor: colors.primary, textColor: colors.white, fontStyle: 'bold' },
             columnStyles: isBoqMode ? {
                 0: { cellWidth: 10 },  // Sr
-                1: { cellWidth: 22 },  // Ref Image
-                2: { cellWidth: 55 },  // Original Desc (wider now)
-                3: { cellWidth: 30 },  // Brand Image (wider for logo + image)
-                4: { cellWidth: 55 },  // Brand Desc (wider now)
-                5: { cellWidth: 14 },  // Qty
-                6: { cellWidth: 14 },  // Unit
-                7: { cellWidth: 20 },  // Rate
-                8: { cellWidth: 22 }   // Amount
+                1: { cellWidth: 25 },  // Ref Image
+                2: { cellWidth: 50 },  // Original Desc
+                3: { cellWidth: 35 },  // Brand Image
+                4: { cellWidth: 50 },  // Brand Desc
+                5: { cellWidth: 12 },  // Qty
+                6: { cellWidth: 12 },  // Unit
+                7: { cellWidth: 18 },  // Rate
+                8: { cellWidth: 20 }   // Amount
             } : {
-                0: { cellWidth: 12 },
-                1: { cellWidth: 35 },  // Image (wider for logo + image)
-                2: { cellWidth: 90 },  // Description (wider now)
-                3: { cellWidth: 18 },
-                4: { cellWidth: 18 },
+                0: { cellWidth: 10 },
+                1: { cellWidth: 40 },
+                2: { cellWidth: 100 },
+                3: { cellWidth: 15 },
+                4: { cellWidth: 15 },
                 5: { cellWidth: 25 },
-                6: { cellWidth: 28 }
+                6: { cellWidth: 25 }
             },
             didDrawCell: (data) => {
                 if (data.section === 'body') {
@@ -431,7 +458,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                         const fit = calcFitSize(img.width, img.height, data.cell.width - 2, data.cell.height - 2);
                         const x = data.cell.x + (data.cell.width - fit.w) / 2;
                         const y = data.cell.y + (data.cell.height - fit.h) / 2;
-                        doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h);
+                        doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, undefined, 'FAST');
                     }
 
                     // Draw brand logo above product image in the same cell
@@ -449,7 +476,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                             const logoFit = calcFitSize(logoImg.width, logoImg.height, data.cell.width - 4, logoHeight);
                             const logoX = data.cell.x + (data.cell.width - logoFit.w) / 2;
                             const logoY = data.cell.y + padding;
-                            doc.addImage(logoImg.dataUrl, 'JPEG', logoX, logoY, logoFit.w, logoFit.h);
+                            doc.addImage(logoImg.dataUrl, 'PNG', logoX, logoY, logoFit.w, logoFit.h);
                         }
 
                         // Draw product image below logo
@@ -462,7 +489,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                             const fit = calcFitSize(img.width, img.height, data.cell.width - 4, availableHeight);
                             const x = data.cell.x + (data.cell.width - fit.w) / 2;
                             const y = imgStartY + (availableHeight - fit.h) / 2;
-                            doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h);
+                            doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, undefined, 'FAST');
                         }
                     }
                 }
@@ -512,46 +539,79 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         ws.getCell('A3').font = { italic: true, size: 10, color: { argb: '64748B' } };
 
         // Helper to fetch image as base64
-        const fetchImageBase64 = async (url) => {
+        const fetchImageBase64 = async (url, options = {}) => {
             if (!url) return null;
+            const { maxWidth = 1000, format = 'image/png', quality = 0.85 } = options;
+
             try {
                 const isExternal = url.startsWith('http') && !url.includes('localhost:3001') && !url.includes(window.location.hostname);
+                let dataUrl;
+
                 if (isExternal) {
                     const proxyUrl = `${API_BASE}/api/image-proxy?url=${encodeURIComponent(url)}`;
                     const response = await fetch(proxyUrl);
                     if (!response.ok) return null;
                     const data = await response.json();
-                    return data.dataUrl ? data.dataUrl.split(',')[1] : null;
+                    dataUrl = data.dataUrl;
                 } else {
                     const response = await fetch(url);
                     if (!response.ok) return null;
                     const blob = await response.blob();
-                    return new Promise((resolve) => {
+                    dataUrl = await new Promise((resolve) => {
                         const reader = new FileReader();
-                        reader.onload = () => resolve(reader.result.split(',')[1]);
+                        reader.onload = () => resolve(reader.result);
                         reader.onerror = () => resolve(null);
                         reader.readAsDataURL(blob);
                     });
                 }
+
+                if (!dataUrl) return null;
+
+                return new Promise((resolve) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement("canvas");
+                        const ratio = Math.min(1, maxWidth / img.width);
+                        canvas.width = img.width * ratio;
+                        canvas.height = img.height * ratio;
+                        const ctx = canvas.getContext("2d");
+                        if (format === 'image/jpeg') {
+                            ctx.fillStyle = "#FFFFFF";
+                            ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        } else {
+                            ctx.clearRect(0, 0, canvas.width, canvas.height);
+                        }
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        resolve(canvas.toDataURL(format, quality).split(',')[1]);
+                    };
+                    img.onerror = () => resolve(null);
+                    img.src = dataUrl;
+                });
+
             } catch (e) { return null; }
         };
 
         // Add Company Logo if available
-        if (globalCompanyLogo) {
+        // Prefer original (Blue/Color) for Excel as it has a white background
+        const excelLogo = logoBlue || logoWhite;
+        if (excelLogo) {
             try {
-                const logoBase64 = await fetchImageBase64(globalCompanyLogo);
-                if (logoBase64) {
+                const logoData = await getImageData(excelLogo, { format: 'image/png', maxWidth: 600 });
+                if (logoData) {
                     const logoId = workbook.addImage({
-                        base64: logoBase64,
-                        extension: 'jpeg'
+                        base64: logoData.dataUrl.split(',')[1],
+                        extension: 'png'
                     });
-                    const lastCol = isBoqMode ? 9 : 7;
+
+                    // Position in the top right area (around column G/H/I)
+                    const lastColIndex = isBoqMode ? 8 : 6;
+                    const logoFit = calcFitSize(logoData.width, logoData.height, 150, 60);
                     ws.addImage(logoId, {
-                        tl: { col: lastCol - 1, row: 1 },
-                        ext: { width: 120, height: 40 }
+                        tl: { col: lastColIndex - 1.5, row: 0.2 },
+                        ext: { width: logoFit.w, height: logoFit.h }
                     });
                 }
-            } catch (e) { }
+            } catch (e) { console.error("Excel Logo Error:", e); }
         }
 
         ws.addRow(['']); // Spacer before table
@@ -627,35 +687,38 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             if (isBoqMode && row.imageRef) {
                 try {
                     const refUrl = getFullUrl(row.imageRef);
-                    const base64 = await fetchImageBase64(refUrl);
-                    if (base64) {
+                    // Increased maxWidth for better quality
+                    const imgData = await getImageData(refUrl, { maxWidth: 600, format: 'image/jpeg', quality: 0.9 });
+                    if (imgData) {
                         const imageId = workbook.addImage({
-                            base64: base64,
+                            base64: imgData.dataUrl.split(',')[1],
                             extension: 'jpeg'
                         });
+                        const fit = calcFitSize(imgData.width, imgData.height, 100, 70);
                         ws.addImage(imageId, {
-                            tl: { col: 1.1, row: rowNumber - 1 + 0.1 },
-                            ext: { width: 80, height: 55 }
+                            tl: { col: 1.05, row: rowNumber - 1 + 0.1 },
+                            ext: { width: fit.w, height: fit.h }
                         });
                     }
                 } catch (e) { console.log('Ref image error:', e); }
             }
 
             // Determine brand image column
-            const brandImgCol = isBoqMode ? 3 : 1; // 0-indexed: col 4 for BOQ, col 2 for non-BOQ
+            const brandImgCol = isBoqMode ? 3 : 1;
 
             // Add brand logo on top of brand image cell
             if (row.brandLogo) {
                 try {
-                    const logoBase64 = await fetchImageBase64(row.brandLogo);
-                    if (logoBase64) {
+                    const logoData = await getImageData(row.brandLogo, { maxWidth: 400, format: 'image/png' });
+                    if (logoData) {
                         const logoId = workbook.addImage({
-                            base64: logoBase64,
-                            extension: 'jpeg'
+                            base64: logoData.dataUrl.split(',')[1],
+                            extension: 'png'
                         });
+                        const logoFit = calcFitSize(logoData.width, logoData.height, 60, 20);
                         ws.addImage(logoId, {
-                            tl: { col: brandImgCol + 0.15, row: rowNumber - 1 + 0.05 },
-                            ext: { width: 60, height: 18 }
+                            tl: { col: brandImgCol + 0.1, row: rowNumber - 1 + 0.05 },
+                            ext: { width: logoFit.w, height: logoFit.h }
                         });
                     }
                 } catch (e) { console.log('Logo error:', e); }
@@ -664,16 +727,17 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             // Add brand product image below logo
             if (row.brandImage) {
                 try {
-                    const brandBase64 = await fetchImageBase64(row.brandImage);
-                    if (brandBase64) {
+                    // Increased maxWidth for high quality
+                    const brandImgData = await getImageData(row.brandImage, { maxWidth: 800, format: 'image/jpeg', quality: 0.95 });
+                    if (brandImgData) {
                         const brandId = workbook.addImage({
-                            base64: brandBase64,
+                            base64: brandImgData.dataUrl.split(',')[1],
                             extension: 'jpeg'
                         });
-                        // Position below logo
+                        const imgFit = calcFitSize(brandImgData.width, brandImgData.height, 120, 50);
                         ws.addImage(brandId, {
-                            tl: { col: brandImgCol + 0.1, row: rowNumber - 1 + 0.35 },
-                            ext: { width: 90, height: 42 }
+                            tl: { col: brandImgCol + 0.05, row: rowNumber - 1 + 0.3 },
+                            ext: { width: imgFit.w, height: imgFit.h }
                         });
                     }
                 } catch (e) { console.log('Brand image error:', e); }
@@ -742,7 +806,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             x: 2, y: 1.8, w: 6, h: 1.5, fill: { color: colors.lightBg }, line: { color: colors.border, pt: 1 }
         });
         titleSlide.addText(`Multi-Budget Offer`, {
-            x: 2, y: 2, w: 6, h: 0.6, fontSize: 32, bold: true, color: colors.primary, align: 'center'
+            x: 2, y: 2.0, w: 6, h: 0.6, fontSize: 32, bold: true, color: colors.primary, align: 'center'
         });
         titleSlide.addText(`${activeTier.charAt(0).toUpperCase() + activeTier.slice(1)} Tier`, {
             x: 2, y: 2.6, w: 6, h: 0.5, fontSize: 20, color: colors.accent, align: 'center'
@@ -750,6 +814,26 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         titleSlide.addText(`${tier.rows.filter(r => r.brandImage || r.brandDesc).length} Products`, {
             x: 2, y: 3.8, w: 6, h: 0.3, fontSize: 12, color: colors.lightText, align: 'center'
         });
+
+        // Company Logo on Title Slide
+        const titleSlideLogo = logoWhite || logoBlue;
+        if (titleSlideLogo) {
+            try {
+                const logoImg = await getImageData(titleSlideLogo, { format: 'image/png', maxWidth: 400 });
+                if (logoImg) {
+                    const fit = calcFitSize(logoImg.width, logoImg.height, 1.3 * 96, 0.45 * 96);
+                    const fitW = fit.w / 96;
+                    const fitH = fit.h / 96;
+                    titleSlide.addImage({
+                        data: logoImg.dataUrl,
+                        x: 8.4 + (1.3 - fitW) / 2, y: 0.15 + (0.45 - fitH) / 2, w: fitW, h: fitH
+                    });
+                }
+            } catch (e) { }
+        } else {
+            titleSlide.addText('LOGO', { x: 8.3, y: 0.25, w: 1.5, h: 0.3, fontSize: 10, color: colors.lightText, align: 'center' });
+        }
+
 
         let itemNum = 1;
         for (const row of tier.rows) {
@@ -762,15 +846,19 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 x: 0.3, y: 0.2, w: 7.5, h: 0.4, fontSize: 13, bold: true, color: colors.white
             });
 
-            // Top Right Logo box (Now Company Logo)
-            slide.addShape('rect', {
-                x: 8.3, y: 0.1, w: 1.5, h: 0.55, fill: { color: colors.white }, line: { color: colors.border, pt: 0.5 }
-            });
-            if (globalCompanyLogo) {
+            // Top Right Logo (Now Company Logo)
+            const slideLogo = logoWhite || logoBlue;
+            if (slideLogo) {
                 try {
-                    const logoImg = await getImageData(globalCompanyLogo);
+                    const logoImg = await getImageData(slideLogo, { format: 'image/png', maxWidth: 400 });
                     if (logoImg) {
-                        slide.addImage({ data: logoImg.dataUrl, x: 8.4, y: 0.15, w: 1.3, h: 0.45, sizing: { type: 'contain', w: 1.3, h: 0.45 } });
+                        const fit = calcFitSize(logoImg.width, logoImg.height, 1.3 * 96, 0.45 * 96);
+                        const fitW = fit.w / 96;
+                        const fitH = fit.h / 96;
+                        slide.addImage({
+                            data: logoImg.dataUrl,
+                            x: 8.4 + (1.3 - fitW) / 2, y: 0.15 + (0.45 - fitH) / 2, w: fitW, h: fitH
+                        });
                     }
                 } catch (e) { }
             } else {
@@ -801,7 +889,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 } catch (e) { }
             }
 
-            // Brand badge (No logo now, logo moved above image)
+            // Brand badge (No logo now, logo moved above product image)
             if (brandName) {
                 slide.addShape('roundRect', {
                     x: leftX, y: leftY, w: 2.5, h: 0.4,
@@ -974,22 +1062,17 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             doc.text(title, 10, 13);
 
             // Top Right Logo (Now Company Logo)
-            doc.setFillColor(...colors.white);
-            doc.setDrawColor(...colors.border);
-            doc.roundedRect(pageWidth - 42, 3, 38, 14, 2, 2, 'FD');
-            if (globalCompanyLogo) {
+            // Header is blue, so we prefer the White logo variant if available
+            const presentationLogo = logoWhite || logoBlue;
+            if (presentationLogo) {
                 try {
-                    const docLogo = await getImageData(globalCompanyLogo);
+                    const docLogo = await getImageData(presentationLogo, { format: 'image/png', maxWidth: 400 });
                     if (docLogo) {
-                        const fit = calcFitSize(docLogo.width, docLogo.height, 34, 10);
-                        const logoX = pageWidth - 42 + (38 - fit.w) / 2;
-                        doc.addImage(docLogo.dataUrl, 'JPEG', logoX, 5, fit.w, fit.h);
+                        const fit = calcFitSize(docLogo.width, docLogo.height, 40, 14);
+                        // Draw directly on blue header - no placeholder box
+                        doc.addImage(docLogo.dataUrl, 'PNG', pageWidth - fit.w - 10, 3, fit.w, fit.h);
                     }
                 } catch (e) { }
-            } else {
-                doc.setTextColor(...colors.lightText);
-                doc.setFontSize(9);
-                doc.text('LOGO', pageWidth - 28, 11);
             }
 
             // ===== LEFT COLUMN: Images =====
@@ -1001,7 +1084,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             if (isBoqMode && row.imageRef) {
                 const refUrl = getFullUrl(row.imageRef);
                 try {
-                    const refImg = await getImageData(refUrl);
+                    const refImg = await getImageData(refUrl, { maxWidth: 600, format: 'image/jpeg', quality: 0.9 });
                     if (refImg) {
                         // Reference label
                         doc.setTextColor(...colors.lightText);
@@ -1013,7 +1096,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                         // Reference image container
                         doc.setFillColor(...colors.lightBg);
                         doc.setDrawColor(...colors.border);
-                        doc.roundedRect(leftX, leftY, 35, 25, 2, 2, 'FD');
+                        doc.rect(leftX, leftY, 35, 25, 'FD'); // Changed to rect, removed rounded
                         const fit = calcFitSize(refImg.width, refImg.height, 31, 21);
                         const refX = leftX + (35 - fit.w) / 2;
                         const refY = leftY + (25 - fit.h) / 2;
@@ -1028,7 +1111,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 doc.setFillColor(...colors.lightBg);
                 doc.setDrawColor(...colors.primary);
                 doc.setLineWidth(0.5);
-                doc.roundedRect(leftX, leftY, 60, 12, 2, 2, 'FD');
+                doc.rect(leftX, leftY, 60, 12, 'FD'); // Changed to rect, removed rounded
 
                 doc.setTextColor(...colors.primary);
                 doc.setFontSize(9);
@@ -1038,28 +1121,28 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             }
 
             // Brand Logo moved above product image
+            const imgContainerW = leftWidth;
             if (row.brandLogo) {
                 try {
-                    const brandLogoImg = await getImageData(row.brandLogo);
+                    const brandLogoImg = await getImageData(row.brandLogo, { maxWidth: 400, format: 'image/png' });
                     if (brandLogoImg) {
                         const fit = calcFitSize(brandLogoImg.width, brandLogoImg.height, 30, 12);
                         const logoX = leftX + (imgContainerW - fit.w) / 2;
-                        doc.addImage(brandLogoImg.dataUrl, 'JPEG', logoX, leftY - 12, fit.w, fit.h);
+                        doc.addImage(brandLogoImg.dataUrl, 'PNG', logoX, leftY - 12, fit.w, fit.h);
                     }
                 } catch (e) { }
             }
 
             // Main product image container
-            const imgContainerW = leftWidth;
             const imgContainerH = isBoqMode ? 100 : 130;
             doc.setFillColor(...colors.white);
             doc.setDrawColor(...colors.border);
             doc.setLineWidth(0.5);
-            doc.roundedRect(leftX, leftY, imgContainerW, imgContainerH, 3, 3, 'FD');
+            doc.rect(leftX, leftY, imgContainerW, imgContainerH, 'FD'); // Changed to rect, removed rounded
 
             if (row.brandImage) {
                 try {
-                    const brandImg = await getImageData(row.brandImage);
+                    const brandImg = await getImageData(row.brandImage, { maxWidth: 1000, format: 'image/jpeg', quality: 0.95 });
                     if (brandImg) {
                         const fit = calcFitSize(brandImg.width, brandImg.height, imgContainerW - 8, imgContainerH - 8);
                         const imgX = leftX + (imgContainerW - fit.w) / 2;
@@ -1198,24 +1281,17 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             doc.setFont('helvetica', 'bold');
             doc.text('MATERIAL APPROVAL SHEET', pageWidth / 2, 13, { align: 'center' });
 
-            // Top Right Logo box (Now Company Logo)
-            doc.setFillColor(...colors.white);
-            doc.setDrawColor(...colors.border);
-            doc.roundedRect(pageWidth - 38, 3, 34, 16, 1, 1, 'FD');
-            if (globalCompanyLogo) {
+            // Top Right Logo box removal (MAS is white background, prefer Blue logo)
+            const masLogo = logoBlue || logoWhite;
+            if (masLogo) {
                 try {
-                    const docLogo = await getImageData(globalCompanyLogo);
+                    const docLogo = await getImageData(masLogo, { format: 'image/png', maxWidth: 400 });
                     if (docLogo) {
-                        const fit = calcFitSize(docLogo.width, docLogo.height, 30, 12);
-                        const logoX = pageWidth - 38 + (34 - fit.w) / 2;
-                        const logoY = 3 + (16 - fit.h) / 2;
-                        doc.addImage(docLogo.dataUrl, 'JPEG', logoX, logoY, fit.w, fit.h);
+                        const fit = calcFitSize(docLogo.width, docLogo.height, 35, 14);
+                        // Use original logo on white background - no box needed
+                        doc.addImage(docLogo.dataUrl, 'PNG', pageWidth - fit.w - 10, 4, fit.w, fit.h);
                     }
                 } catch (e) { }
-            } else {
-                doc.setTextColor(...colors.lightText);
-                doc.setFontSize(8);
-                doc.text('LOGO', pageWidth - 21, 12, { align: 'center' });
             }
 
             // ===== DOCUMENT INFO BAR =====
