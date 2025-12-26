@@ -83,7 +83,7 @@ async function extractExcelData(filePath, progressCallback = () => { }, onBlobCr
 
     // Return single stitched table
     const finalTable = unifiedHeader ? [{
-        sheetName: "Combined BOQ",
+        sheetName: "BOQ Schedule",
         rows: unifiedRows,
         columnCount: unifiedHeader.length,
         header: unifiedHeader
@@ -319,10 +319,13 @@ async function processWorksheetStream(worksheetReader, imageMap, sheetIndex) {
         // ... Match logic ...
 
         // 2. Process Data Rows
-        // Repeats headers check
-        const isRepeatedHeader = BOQ_HEADER_KEYWORDS.reduce((count, pattern) => {
+        // Check if this is a repeated header row (must match AT LEAST 3 patterns to be a true header)
+        // Also exclude summary rows like "TOTAL AMOUNT" which may falsely match
+        const isSummaryRow = rowStrings.some(str => /^total\s*(amount)?$/i.test(str));
+
+        const isRepeatedHeader = !isSummaryRow && BOQ_HEADER_KEYWORDS.reduce((count, pattern) => {
             return count + (rowStrings.some(str => pattern.test(str)) ? 1 : 0);
-        }, 0) >= 2;
+        }, 0) >= 3; // Increased from 2 to 3 for stricter matching
 
         if (isRepeatedHeader) continue;
 

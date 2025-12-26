@@ -36,6 +36,7 @@ export default function CostingModal({ isOpen, onClose, initialFactors, onApply 
         freight: 0,
         customs: 0,
         installation: 0,
+        vat: 5, // Default VAT 5%
         fromCurrency: 'USD',
         toCurrency: 'OMR',
         exchangeRate: 0.385
@@ -121,11 +122,12 @@ export default function CostingModal({ isOpen, onClose, initialFactors, onApply 
         fetchExchangeRate(factors.fromCurrency, factors.toCurrency);
     };
 
-    // Calculate preview of markup
     const totalMarkup = factors.profit + factors.freight + factors.customs + factors.installation;
     const samplePrice = 100;
     const markupMultiplier = 1 + totalMarkup / 100;
-    const convertedPrice = samplePrice * markupMultiplier * factors.exchangeRate;
+    const subtotalPrice = samplePrice * markupMultiplier * factors.exchangeRate;
+    const vatAmount = subtotalPrice * ((factors.vat || 0) / 100);
+    const convertedPrice = subtotalPrice + vatAmount;
 
     if (!isOpen) return null;
 
@@ -187,6 +189,19 @@ export default function CostingModal({ isOpen, onClose, initialFactors, onApply 
                         type="range" min="0" max="50" step="1"
                         value={factors.installation}
                         onChange={e => handleChange('installation', parseFloat(e.target.value))}
+                        className={styles.slider}
+                    />
+                </div>
+
+                <div className={styles.controlGroup}>
+                    <div className={styles.labelRow}>
+                        <span>VAT (Tax)</span>
+                        <span>{factors.vat}%</span>
+                    </div>
+                    <input
+                        type="range" min="0" max="25" step="1"
+                        value={factors.vat}
+                        onChange={e => handleChange('vat', parseFloat(e.target.value))}
                         className={styles.slider}
                     />
                 </div>
@@ -316,12 +331,30 @@ export default function CostingModal({ isOpen, onClose, initialFactors, onApply 
                         <div style={{
                             display: 'flex',
                             justifyContent: 'space-between',
+                            color: '#94a3b8',
+                            fontSize: '0.9em'
+                        }}>
+                            <span>Subtotal ({factors.toCurrency}):</span>
+                            <span>{subtotalPrice.toFixed(2)}</span>
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            color: '#94a3b8',
+                            fontSize: '0.9em'
+                        }}>
+                            <span>VAT ({factors.vat}%):</span>
+                            <span>{vatAmount.toFixed(2)}</span>
+                        </div>
+                        <div style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
                             paddingTop: 8,
                             borderTop: '1px dashed rgba(255,255,255,0.2)',
                             fontWeight: 'bold',
                             color: '#f59e0b'
                         }}>
-                            <span>Final Price ({factors.toCurrency}):</span>
+                            <span>Grand Total ({factors.toCurrency}):</span>
                             <span>{convertedPrice.toFixed(2)}</span>
                         </div>
                     </div>

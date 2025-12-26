@@ -972,53 +972,66 @@ class ScraperService {
     async scrapeBrand(url, onProgress = null) {
         console.log(`\n🔍 Starting scrape for: ${url}`);
 
-        // 1. Handle Architonic Special Case
-        if (url.includes('architonic.com')) {
-            const result = await this.scrapeArchitonic(url, onProgress);
+        // Check if running on Vercel serverless (Playwright/Puppeteer won't work)
+        const isVercel = process.env.VERCEL === '1';
+        if (isVercel) {
+            console.error('❌ Scraping not supported on Vercel serverless functions.');
+            console.error('   Playwright requires Chromium which is not available on Vercel.');
+            throw new Error('Web scraping is not available in the deployed environment. Please use the local development server for scraping operations, then sync brands to the cloud.');
+        }
+
+        try {
+            // 1. Handle Architonic Special Case
+            if (url.includes('architonic.com')) {
+                const result = await this.scrapeArchitonic(url, onProgress);
+
+                return {
+                    products: result.products,
+                    summary: {
+                        totalFound: result.products.length,
+                        unique: result.products.length,
+                        enriched: 0,
+                        failedEnrichment: 0
+                    },
+                    brandInfo: result.brandInfo
+                };
+            }
+
+            // 2. Use Universal Scraper for all other sites
+            console.log(`\n🌐 Using Universal Intelligent Scraper...`);
+            const result = await this.scrapeUniversal(url, onProgress);
+
+            // 3. Enrich descriptions
+            console.log(`\n📝 Enriching product descriptions for ${result.products.length} products...`);
+            const enrichmentStats = await this.enrichDescriptions(result.products);
+
+            // 4. Deduplicate final results
+            const seen = new Set();
+            const uniqueProducts = [];
+            for (const p of result.products) {
+                const key = `${p.model}|${p.productUrl}`.toLowerCase();
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    uniqueProducts.push(p);
+                }
+            }
+
+            console.log(`\n✅ Scraped ${uniqueProducts.length} unique products for ${result.brandInfo.name}`);
 
             return {
-                products: result.products,
+                products: uniqueProducts,
                 summary: {
                     totalFound: result.products.length,
-                    unique: result.products.length,
-                    enriched: 0,
-                    failedEnrichment: 0
+                    unique: uniqueProducts.length,
+                    enriched: enrichmentStats.enriched,
+                    failedEnrichment: enrichmentStats.failed.length
                 },
                 brandInfo: result.brandInfo
             };
+        } catch (error) {
+            console.error('Scraping failed with error:', error.message);
+            throw error;
         }
-
-        // 2. Use Universal Scraper for all other sites
-        console.log(`\n🌐 Using Universal Intelligent Scraper...`);
-        const result = await this.scrapeUniversal(url, onProgress);
-
-        // 3. Enrich descriptions
-        console.log(`\n📝 Enriching product descriptions for ${result.products.length} products...`);
-        const enrichmentStats = await this.enrichDescriptions(result.products);
-
-        // 4. Deduplicate final results
-        const seen = new Set();
-        const uniqueProducts = [];
-        for (const p of result.products) {
-            const key = `${p.model}|${p.productUrl}`.toLowerCase();
-            if (!seen.has(key)) {
-                seen.add(key);
-                uniqueProducts.push(p);
-            }
-        }
-
-        console.log(`\n✅ Scraped ${uniqueProducts.length} unique products for ${result.brandInfo.name}`);
-
-        return {
-            products: uniqueProducts,
-            summary: {
-                totalFound: result.products.length,
-                unique: uniqueProducts.length,
-                enriched: enrichmentStats.enriched,
-                failedEnrichment: enrichmentStats.failed.length
-            },
-            brandInfo: result.brandInfo
-        };
     }
 
     // ===================== DESCRIPTION ENRICHMENT =====================

@@ -7,6 +7,7 @@ import autoTable from 'jspdf-autotable';
 
 import { ScrapingProvider } from '../context/ScrapingContext';
 import { useCompanyProfile } from '../context/CompanyContext';
+import { fixArabic, hasArabic, loadArabicFont } from '../utils/arabicPdfUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
@@ -17,7 +18,8 @@ const getFullUrl = (url) => {
 };
 
 export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
-    const { logoWhite, logoBlue, updateProfile, processLogoFile } = useCompanyProfile();
+    const profile = useCompanyProfile();
+    const { companyName, logoWhite, logoBlue, website, updateProfile, processLogoFile } = profile;
     const [activeTier, setActiveTier] = useState('mid'); // budgetary, mid, high
     const [previewImage, setPreviewImage] = useState(null); // URL of image to preview
     const [previewLogo, setPreviewLogo] = useState(null); // URL of brand logo for preview
@@ -41,6 +43,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         freight: 0,
         customs: 0,
         installation: 0,
+        vat: 5, // Default VAT 5%
         fromCurrency: 'USD',
         toCurrency: 'OMR',
         exchangeRate: 0.385
@@ -338,6 +341,9 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         const doc = new jsPDF({ orientation: 'landscape' });
         const pageWidth = doc.internal.pageSize.getWidth();
 
+        const arabicLoaded = await loadArabicFont(doc);
+        const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
+
         const colors = {
             primary: [30, 95, 168],
             accent: [245, 166, 35],
@@ -370,10 +376,12 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             } catch (e) { }
         }
 
-        // Define columns based on mode (removed Brand column - logo now goes above product image)
+        // Define columns based on mode
         const header = isBoqMode
             ? ['Sr.', 'Ref Image', 'Original Desc', 'Brand Image', 'Brand Desc', 'Qty', 'Unit', 'Rate', 'Amount']
             : ['Sr.', 'Image', 'Description', 'Qty', 'Unit', 'Rate', 'Amount'];
+
+        const processedHeader = header.map(h => processText(h));
 
         // Pre-load all images (Use JPEG for products to save space)
         const imageDataMap = {};
@@ -407,16 +415,16 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         const body = tier.rows.map((row, i) => {
             const amount = (parseFloat(row.qty || 0) * parseFloat(row.rate || 0)).toFixed(2);
             if (isBoqMode) {
-                return [row.sn, '', row.description || '', '', row.brandDesc || '', row.qty || '', row.unit || '', row.rate || '', amount];
+                return [row.sn, '', processText(row.description), '', processText(row.brandDesc), row.qty || '', row.unit || '', row.rate || '', amount];
             } else {
-                return [row.sn, '', row.brandDesc || '', row.qty || '', row.unit || '', row.rate || '', amount];
+                return [row.sn, '', processText(row.brandDesc), row.qty || '', row.unit || '', row.rate || '', amount];
             }
         });
 
         // Table Generation
         autoTable(doc, {
             startY: 25,
-            head: [header],
+            head: [processedHeader],
             body: body,
             theme: 'grid',
             tableWidth: 'auto', // Let autoTable handle width but provide hint
@@ -424,9 +432,10 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 fontSize: 8,
                 cellPadding: 2,
                 overflow: 'linebreak',
-                valign: 'middle'
+                valign: 'middle',
+                font: arabicLoaded ? 'Almarai' : 'helvetica'
             },
-            headStyles: { fillColor: colors.primary, textColor: colors.white, fontStyle: 'bold' },
+            headStyles: { fillColor: colors.primary, textColor: colors.white, fontStyle: 'bold', font: arabicLoaded ? 'Almarai' : 'helvetica' },
             columnStyles: isBoqMode ? {
                 0: { cellWidth: 10 },  // Sr
                 1: { cellWidth: 25 },  // Ref Image
@@ -507,6 +516,38 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 }
             }
         });
+
+        // Add Summary Section
+        const subtotal = tier.rows.reduce((sum, row) => sum + (parseFloat(row.qty || 0) * parseFloat(row.rate || 0)), 0);
+        const vatAmount = subtotal * ((costingFactors.vat || 0) / 100);
+        const grandTotal = subtotal + vatAmount;
+
+        const finalY = doc.lastAutoTable.finalY + 10;
+        const summaryWidth = 80;
+        const summaryX = pageWidth - summaryWidth - 10;
+
+        // Ensure we have space, if not add page
+        if (finalY + 25 > doc.internal.pageSize.getHeight()) {
+            doc.addPage();
+            // Optional: add a small header or just start summary at top
+        }
+
+        doc.setFontSize(10);
+        doc.setTextColor(...colors.text);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Subtotal:', summaryX, finalY);
+        doc.text(`${subtotal.toFixed(2)} ${costingFactors.toCurrency}`, pageWidth - 10, finalY, { align: 'right' });
+
+        doc.text(`VAT (${costingFactors.vat}%):`, summaryX, finalY + 7);
+        doc.text(`${vatAmount.toFixed(2)} ${costingFactors.toCurrency}`, pageWidth - 10, finalY + 7, { align: 'right' });
+
+        doc.setFont('helvetica', 'bold');
+        doc.setFillColor(...colors.primary);
+        doc.rect(summaryX - 5, finalY + 11, summaryWidth + 5, 10, 'F');
+        doc.setTextColor(...colors.white);
+        doc.setFontSize(12);
+        doc.text('GRAND TOTAL:', summaryX, finalY + 17.5);
+        doc.text(`${grandTotal.toFixed(2)} ${costingFactors.toCurrency}`, pageWidth - 12, finalY + 17.5, { align: 'right' });
 
         doc.save(`MultiBudget_${activeTier}_Offer.pdf`);
     };
@@ -644,6 +685,12 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 { width: 18 }   // Amount
             ];
 
+        // Enable RTL if Arabic detected
+        const hasAr = header.some(h => hasArabic(h)) || tier.rows.some(r => hasArabic(r.description) || hasArabic(r.brandDesc));
+        if (hasAr) {
+            ws.views = [{ rightToLeft: true }];
+        }
+
         // Add header row
         const headerRow = ws.addRow(header);
         headerRow.height = 25;
@@ -687,8 +734,8 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             if (isBoqMode && row.imageRef) {
                 try {
                     const refUrl = getFullUrl(row.imageRef);
-                    // Increased maxWidth for better quality
-                    const imgData = await getImageData(refUrl, { maxWidth: 600, format: 'image/jpeg', quality: 0.9 });
+                    // Higher quality and resolution for Excel
+                    const imgData = await getImageData(refUrl, { maxWidth: 800, format: 'image/jpeg', quality: 0.95 });
                     if (imgData) {
                         const imageId = workbook.addImage({
                             base64: imgData.dataUrl.split(',')[1],
@@ -743,18 +790,40 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 } catch (e) { console.log('Brand image error:', e); }
             }
         }
-        const totalAmount = tier.rows.reduce((sum, row) => sum + (parseFloat(row.qty || 0) * parseFloat(row.rate || 0)), 0);
-        const summaryRow = ws.addRow(isBoqMode
-            ? ['', '', '', '', '', '', '', 'Total:', totalAmount.toFixed(2)]
-            : ['', '', '', '', '', 'Total:', totalAmount.toFixed(2)]
-        );
-        summaryRow.height = 25;
-        summaryRow.eachCell((cell, colNumber) => {
-            if (colNumber >= (isBoqMode ? 8 : 6)) {
-                cell.font = { bold: true, size: 11 };
-                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F5A623' } };
-                cell.alignment = { vertical: 'middle', horizontal: 'right' };
-            }
+        const subtotal = tier.rows.reduce((sum, row) => sum + (parseFloat(row.qty || 0) * parseFloat(row.rate || 0)), 0);
+        const vatAmount = subtotal * ((costingFactors.vat || 0) / 100);
+        const grandTotal = subtotal + vatAmount;
+
+        ws.addRow([]); // Spacer
+        const summaryStartCol = isBoqMode ? 8 : 6;
+
+        // Subtotal row
+        const stRow = ws.addRow([]);
+        stRow.getCell(summaryStartCol).value = 'Subtotal:';
+        stRow.getCell(summaryStartCol + 1).value = `${subtotal.toFixed(2)} ${costingFactors.toCurrency}`;
+        stRow.getCell(summaryStartCol).font = { bold: true };
+        stRow.getCell(summaryStartCol + 1).alignment = { horizontal: 'right' };
+
+        // VAT row
+        const vRow = ws.addRow([]);
+        vRow.getCell(summaryStartCol).value = `VAT (${costingFactors.vat}%):`;
+        vRow.getCell(summaryStartCol + 1).value = `${vatAmount.toFixed(2)} ${costingFactors.toCurrency}`;
+        vRow.getCell(summaryStartCol + 1).alignment = { horizontal: 'right' };
+
+        // Grand Total row
+        const gtRow = ws.addRow([]);
+        gtRow.getCell(summaryStartCol).value = 'GRAND TOTAL:';
+        gtRow.getCell(summaryStartCol + 1).value = `${grandTotal.toFixed(2)} ${costingFactors.toCurrency}`;
+        gtRow.height = 30;
+
+        [gtRow.getCell(summaryStartCol), gtRow.getCell(summaryStartCol + 1)].forEach(cell => {
+            cell.font = { bold: true, size: 12, color: { argb: 'FFFFFF' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1E5FA8' } };
+            cell.alignment = { vertical: 'middle', horizontal: 'right' };
+            cell.border = {
+                top: { style: 'medium', color: { argb: 'F5A623' } },
+                bottom: { style: 'medium', color: { argb: 'F5A623' } }
+            };
         });
 
         const buffer = await workbook.xlsx.writeBuffer();
@@ -841,9 +910,13 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             const slide = pres.addSlide({ masterName: 'PREMIUM_MASTER' });
             const brandName = (row.selectedBrand || '').replace(/Explore collections by/i, '').trim();
 
-            // Header text
-            slide.addText(`Item ${itemNum}: ${(row.brandDesc || '').substring(0, 55)}${(row.brandDesc || '').length > 55 ? '...' : ''}`, {
-                x: 0.3, y: 0.2, w: 7.5, h: 0.4, fontSize: 13, bold: true, color: colors.white
+            // Header text - extract first line/product name only (short, no overflow)
+            const descForHeader = (row.brandDesc || '');
+            const firstLineHeader = descForHeader.split(/[\n*•]/)[0].trim();
+            const headerTitle = firstLineHeader.length > 45 ? firstLineHeader.substring(0, 42) + '...' : firstLineHeader;
+
+            slide.addText(`Item ${itemNum}: ${headerTitle}`, {
+                x: 0.3, y: 0.15, w: 7.5, h: 0.4, fontSize: 12, bold: true, color: colors.white, valign: 'middle'
             });
 
             // Top Right Logo (Now Company Logo)
@@ -962,42 +1035,58 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 x: rightX, y: rightY, w: rightWidth, h: 0.25, fontSize: 10, bold: true, color: colors.text
             });
             rightY += 0.25;
-            const descText = (row.brandDesc || 'N/A').substring(0, 250);
-            slide.addText(descText, {
-                x: rightX, y: rightY, w: rightWidth, h: 1.0, fontSize: 9, color: colors.text, valign: 'top'
+            // Full description with word wrap - capped to fit slide
+            const fullDescription = (row.brandDesc || 'N/A').trim();
+            // Calculate available height - leave room for Brand, Qty, Specs before footer
+            const maxDescY = 3.2;
+            const availableH = maxDescY - rightY;
+            const estDescLines = Math.ceil(fullDescription.length / 55) + (fullDescription.match(/[\n*•]/g) || []).length;
+            const descBoxHeight = Math.min(availableH, Math.max(0.4, estDescLines * 0.14));
+
+            slide.addText(fullDescription, {
+                x: rightX, y: rightY, w: rightWidth, h: descBoxHeight,
+                fontSize: 9, color: colors.text, valign: 'top',
+                wrap: true, shrinkText: true
             });
-            rightY += 1.1;
+            rightY += descBoxHeight + 0.08;
+
+            // Max content Y before footer (footer at ~4.65)
+            const maxContentY = 4.4;
 
             // Brand info
-            slide.addText('Brand:', {
-                x: rightX, y: rightY, w: 0.8, h: 0.25, fontSize: 10, bold: true, color: colors.text
-            });
-            slide.addText(brandName || 'N/A', {
-                x: rightX + 0.8, y: rightY, w: rightWidth - 0.8, h: 0.25, fontSize: 10, color: colors.primary
-            });
-            rightY += 0.35;
+            if (rightY < maxContentY - 0.25) {
+                slide.addText('Brand:', {
+                    x: rightX, y: rightY, w: 0.7, h: 0.2, fontSize: 9, bold: true, color: colors.text
+                });
+                slide.addText(brandName || 'N/A', {
+                    x: rightX + 0.55, y: rightY, w: rightWidth - 0.55, h: 0.2, fontSize: 9, color: colors.primary
+                });
+                rightY += 0.25;
+            }
 
             // Quantity
-            slide.addText('Quantity:', {
-                x: rightX, y: rightY, w: 0.9, h: 0.25, fontSize: 10, bold: true, color: colors.text
-            });
-            slide.addText(String(row.qty || 'As per BOQ'), {
-                x: rightX + 0.9, y: rightY, w: rightWidth - 0.9, h: 0.25, fontSize: 10, color: colors.text
-            });
-            rightY += 0.4;
+            if (rightY < maxContentY - 0.25) {
+                slide.addText('Quantity:', {
+                    x: rightX, y: rightY, w: 0.8, h: 0.2, fontSize: 9, bold: true, color: colors.text
+                });
+                slide.addText(String(row.qty || 'As per BOQ'), {
+                    x: rightX + 0.7, y: rightY, w: rightWidth - 0.7, h: 0.2, fontSize: 9, color: colors.text
+                });
+                rightY += 0.28;
+            }
 
-            // Specifications section
-            slide.addText('Specifications:', {
-                x: rightX, y: rightY, w: rightWidth, h: 0.25, fontSize: 10, bold: true, color: colors.primary
-            });
-            rightY += 0.3;
-            slide.addText('• Warranty: As per manufacturer', {
-                x: rightX + 0.15, y: rightY, w: rightWidth - 0.15, h: 0.2, fontSize: 9, color: colors.text
-            });
-            rightY += 0.25;
-            slide.addText('• Installation: Professional installation included', {
-                x: rightX + 0.15, y: rightY, w: rightWidth - 0.15, h: 0.2, fontSize: 9, color: colors.text
-            });
+            // Specifications section - only if space
+            if (rightY < maxContentY - 0.35) {
+                slide.addText('Specifications:', {
+                    x: rightX, y: rightY, w: rightWidth, h: 0.2, fontSize: 9, bold: true, color: colors.primary
+                });
+                rightY += 0.22;
+
+                const specsH = Math.min(maxContentY - rightY, 0.4);
+                slide.addText('• Warranty: As per manufacturer', {
+                    x: rightX + 0.1, y: rightY, w: rightWidth - 0.1, h: specsH, fontSize: 8, color: colors.text
+                });
+            }
 
             // ===== FOOTER =====
             // Warranty section
@@ -1027,6 +1116,9 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         const doc = new jsPDF({ orientation: 'landscape' });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
+
+        const arabicLoaded = await loadArabicFont(doc);
+        const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
         const isBoqMode = tier.mode === 'boq';
         const totalItems = tier.rows.filter(r => r.brandImage || r.brandDesc).length;
 
@@ -1054,12 +1146,17 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             doc.setFillColor(...colors.accent);
             doc.rect(0, 20, pageWidth, 2.5, 'F');
 
-            // Header title
+            // Header title - handle multi-line
             doc.setTextColor(...colors.white);
             doc.setFontSize(11);
-            doc.setFont('helvetica', 'bold');
-            const title = `Item ${itemNum}: ${(row.brandDesc || '').substring(0, 65)}${(row.brandDesc || '').length > 65 ? '...' : ''}`;
-            doc.text(title, 10, 13);
+            doc.setFont(arabicLoaded ? 'Almarai' : 'helvetica', 'bold');
+            const fullTitle = `Item ${itemNum}: ${row.brandDesc || ''}`;
+            const titleLines = doc.splitTextToSize(processText(fullTitle), pageWidth - 70);
+            let currentTitleY = 10;
+            titleLines.slice(0, 2).forEach(tl => {
+                doc.text(tl, 10, currentTitleY);
+                currentTitleY += 5.5;
+            });
 
             // Top Right Logo (Now Company Logo)
             // Header is blue, so we prefer the White logo variant if available
@@ -1178,9 +1275,14 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
 
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
-            const descLines = doc.splitTextToSize(row.brandDesc || 'N/A', rightWidth - 5);
-            doc.text(descLines.slice(0, 6), rightX, rightY);
-            rightY += Math.min(descLines.length, 6) * 4 + 8;
+            const descLines = doc.splitTextToSize(processText(row.brandDesc || 'N/A'), rightWidth - 5);
+            const displayLines = descLines.slice(0, 12);
+
+            displayLines.forEach((line) => {
+                doc.text(line, rightX, rightY);
+                rightY += 7; // Increased to 7
+            });
+            rightY += 6;
 
             // Brand info
             doc.setFontSize(10);
@@ -1188,8 +1290,8 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             doc.text('Brand:', rightX, rightY);
             doc.setFont('helvetica', 'normal');
             doc.setTextColor(...colors.primary);
-            doc.text(brandName || 'N/A', rightX + 18, rightY);
-            rightY += 8;
+            doc.text(brandName || 'N/A', rightX + 22, rightY);
+            rightY += 10;
 
             // Quantity
             doc.setTextColor(...colors.text);
@@ -1197,7 +1299,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             doc.text('Quantity:', rightX, rightY);
             doc.setFont('helvetica', 'normal');
             doc.text(String(row.qty || 'As per BOQ'), rightX + 22, rightY);
-            rightY += 12;
+            rightY += 14;
 
             // Specifications section
             doc.setTextColor(...colors.primary);
@@ -1208,11 +1310,16 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             doc.setTextColor(...colors.text);
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
-            doc.text('• Warranty: As per manufacturer', rightX + 3, rightY);
-            rightY += 5;
-            doc.text('• Installation: Professional installation included', rightX + 3, rightY);
-            rightY += 5;
-            doc.text('• Returns: Subject to terms and conditions', rightX + 3, rightY);
+            const presentationSpecs = [
+                '• Warranty: As per manufacturer',
+                '• Installation: Professional installation included',
+                '• Returns: Subject to terms and conditions'
+            ];
+            presentationSpecs.forEach((spec) => {
+                doc.text(spec, rightX + 3, rightY);
+                rightY += 5.5;
+            });
+            rightY += 4;
 
             // ===== FOOTER =====
             // Footer background
@@ -1232,6 +1339,11 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             doc.setTextColor(...colors.lightText);
             doc.setFontSize(8);
             doc.text(`${itemNum} / ${totalItems}`, pageWidth - 20, pageHeight - 4);
+            // Website / Brand reference
+            const footVal = profile.website || profile.companyName || 'BOQFLOW';
+            const footIsAr = hasArabic(footVal);
+            doc.setFont(footIsAr && arabicLoaded ? 'Almarai' : 'helvetica', 'normal');
+            doc.text(footIsAr ? fixArabic(footVal) : footVal, pageWidth / 2, pageHeight - 4, { align: 'center' });
 
             itemNum++;
         }
@@ -1359,6 +1471,9 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 try {
                     const brandLogoImg = await getImageData(row.brandLogo);
                     if (brandLogoImg) {
+                        const arabicLoaded = await loadArabicFont(doc);
+                        const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
+
                         const fit = calcFitSize(brandLogoImg.width, brandLogoImg.height, 30, 8);
                         const logoX = imgContainerX + (imgContainerW - fit.w) / 2;
                         doc.addImage(brandLogoImg.dataUrl, 'JPEG', logoX, imgY - 10, fit.w, fit.h);
@@ -1389,29 +1504,31 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             autoTable(doc, {
                 startY: imgY,
                 margin: { left: 15, right: 15 },
-                head: [['Specification', 'Details']],
+                head: [[processText('Specification'), processText('Details')]],
                 body: [
-                    ['Product Description', row.brandDesc || 'N/A'],
-                    ['Brand / Manufacturer', brandName || 'N/A'],
-                    ['Quantity Required', String(row.qty || 'As per BOQ')],
-                    ['Unit Rate', row.rate ? `${row.rate}` : 'TBD'],
-                    ['Origin', 'As per manufacturer specification'],
-                    ['Warranty Period', 'As per manufacturer standard warranty'],
-                    ['Lead Time', 'Subject to confirmation'],
-                    ['Installation', 'Professional installation included']
+                    [processText('Product Description'), processText(row.brandDesc)],
+                    [processText('Brand / Manufacturer'), processText(brandName)],
+                    [processText('Quantity Required'), processText(row.qty)],
+                    [processText('Unit Rate'), row.rate ? `${row.rate}` : 'TBD'],
+                    [processText('Origin'), processText('As per manufacturer specification')],
+                    [processText('Warranty Period'), processText('As per manufacturer standard warranty')],
+                    [processText('Lead Time'), processText('Subject to confirmation')],
+                    [processText('Installation'), processText('Professional installation included')]
                 ],
                 theme: 'plain',
                 styles: {
                     fontSize: 9,
                     cellPadding: 4,
                     lineColor: colors.border,
-                    lineWidth: 0.2
+                    lineWidth: 0.2,
+                    font: arabicLoaded ? 'Almarai' : 'helvetica'
                 },
                 headStyles: {
                     fillColor: colors.primary,
                     textColor: colors.white,
                     fontStyle: 'bold',
-                    fontSize: 10
+                    fontSize: 10,
+                    font: arabicLoaded ? 'Almarai' : 'helvetica'
                 },
                 bodyStyles: {
                     textColor: colors.text
@@ -1459,8 +1576,11 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             doc.setTextColor(...colors.lightText);
             doc.setFontSize(7);
             doc.setFont('helvetica', 'normal');
-            doc.text('This document is for material approval purposes only.', 10, pageHeight - 4);
-            doc.text(`Page ${itemNum} of ${totalItems}`, pageWidth - 10, pageHeight - 4, { align: 'right' });
+            doc.text('Material Approval purposes only.', 10, pageHeight - 4);
+            const masFoot = profile.website || profile.companyName || '';
+            const masIsAr = hasArabic(masFoot);
+            doc.setFont(masIsAr && arabicLoaded ? 'Almarai' : 'helvetica', 'normal');
+            doc.text(`${masIsAr ? fixArabic(masFoot) : masFoot} | Page ${itemNum} of ${totalItems}`, pageWidth - 10, pageHeight - 4, { align: 'right' });
 
             itemNum++;
         }
@@ -1472,6 +1592,13 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         if (!tier) return null;
         const { rows, mode } = tier;
         const isBoqMode = mode === 'boq';
+
+        const subtotal = rows.reduce((acc, row) => {
+            const amount = parseFloat(row.amount || (parseFloat(row.qty || 0) * parseFloat(row.rate || 0)) || 0);
+            return acc + (isNaN(amount) ? 0 : amount);
+        }, 0);
+        const vatAmount = subtotal * ((costingFactors.vat || 0) / 100);
+        const grandTotal = subtotal + vatAmount;
 
         return (
             <table className={styles.budgetTable}>
@@ -1724,6 +1851,23 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                         );
                     })}
                 </tbody>
+                <tfoot>
+                    <tr className={styles.summarySubtotalRow}>
+                        <td colSpan={isBoqMode ? 8 : 6} style={{ textAlign: 'right', fontWeight: 'bold' }}>Subtotal ({costingFactors.toCurrency}):</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold' }}>{subtotal.toFixed(2)}</td>
+                        <td colSpan={2}></td>
+                    </tr>
+                    <tr className={styles.summaryVatRow}>
+                        <td colSpan={isBoqMode ? 8 : 6} style={{ textAlign: 'right' }}>VAT ({costingFactors.vat}%):</td>
+                        <td style={{ textAlign: 'right' }}>{vatAmount.toFixed(2)}</td>
+                        <td colSpan={2}></td>
+                    </tr>
+                    <tr className={styles.summaryGrandTotalRow}>
+                        <td colSpan={isBoqMode ? 8 : 6} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.2em' }}>Grand Total:</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.2em', color: '#f5a623' }}>{grandTotal.toFixed(2)}</td>
+                        <td colSpan={2}></td>
+                    </tr>
+                </tfoot>
             </table>
         );
     };

@@ -5,6 +5,7 @@ import styles from '../styles/CompanySettings.module.css';
 export default function CompanySettings({ isModal = false, onClose = null }) {
     const {
         companyName,
+        website: storedWebsite,
         logo: storedLogo,
         updateProfile,
         processLogoFile,
@@ -12,6 +13,7 @@ export default function CompanySettings({ isModal = false, onClose = null }) {
     } = useCompanyProfile();
 
     const [name, setName] = useState(companyName || '');
+    const [website, setWebsite] = useState(storedWebsite || '');
     const [logo, setLogo] = useState(storedLogo || null); // This is the logo object {base64, width, height, isLight, whiteLogo}
     const [error, setError] = useState(null);
     const [success, setSuccess] = useState(null);
@@ -51,7 +53,7 @@ export default function CompanySettings({ isModal = false, onClose = null }) {
         }
 
         setError(null);
-        const result = updateProfile(name.trim(), logo);
+        const result = updateProfile(name.trim(), logo, website.trim());
 
         if (result.success) {
             setSuccess('Company profile saved successfully!');
@@ -68,12 +70,13 @@ export default function CompanySettings({ isModal = false, onClose = null }) {
         if (window.confirm('Are you sure you want to reset your company profile? This cannot be undone.')) {
             clearProfile();
             setName('');
+            setWebsite('');
             setLogo(null);
         }
     };
 
     const handleSkip = () => {
-        updateProfile(name.trim() || 'My Company', logo);
+        updateProfile(name.trim() || 'My Company', logo, website.trim());
         if (onClose) onClose();
     };
 
@@ -103,6 +106,19 @@ export default function CompanySettings({ isModal = false, onClose = null }) {
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="Enter your company name"
+                            maxLength={100}
+                        />
+                    </div>
+
+                    {/* Company Website */}
+                    <div className={styles.field}>
+                        <label className={styles.label}>Company Website</label>
+                        <input
+                            type="text"
+                            className={styles.input}
+                            value={website}
+                            onChange={(e) => setWebsite(e.target.value)}
+                            placeholder="e.g. www.yourcompany.com"
                             maxLength={100}
                         />
                     </div>

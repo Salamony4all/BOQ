@@ -7,6 +7,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { useCompanyProfile } from '../context/CompanyContext';
+import { fixArabic, hasArabic, loadArabicFont } from '../utils/arabicPdfUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
@@ -17,7 +18,8 @@ const getFullUrl = (url) => {
 };
 
 function TableViewer({ data }) {
-    const { companyName, logoWhite, logoBlue } = useCompanyProfile();
+    const profile = useCompanyProfile();
+    const { companyName, logoWhite, logoBlue, website } = profile;
     const [selectedImage, setSelectedImage] = useState(null);
     const [tables, setTables] = useState([]); // Base Data
     const [costingFactors, setCostingFactors] = useState(null);
@@ -40,18 +42,77 @@ function TableViewer({ data }) {
         }
     }, [data]);
 
+    // Compute summary for original extracted tables
+    const tablesWithSummary = useMemo(() => {
+        return tables.map(table => {
+            const header = table.header || [];
+
+            // Find rate and amount/total columns
+            const rateIdx = header.findIndex(h => /rate|price|unit.*price/i.test(h));
+            const amountIdx = header.findIndex(h => /amount|total/i.test(h));
+            const qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
+
+            // Calculate totals
+            let totalRate = 0;
+            let totalAmount = 0;
+            let totalQty = 0;
+            let validRows = 0;
+
+            table.rows.forEach(row => {
+                if (row.isHeader || row.isSummary) return;
+
+                // Parse rate
+                if (rateIdx !== -1 && row.cells[rateIdx]?.value) {
+                    const val = parseFloat(String(row.cells[rateIdx].value).replace(/,/g, ''));
+                    if (!isNaN(val)) totalRate += val;
+                }
+
+                // Parse amount
+                if (amountIdx !== -1 && row.cells[amountIdx]?.value) {
+                    const val = parseFloat(String(row.cells[amountIdx].value).replace(/,/g, ''));
+                    if (!isNaN(val)) {
+                        totalAmount += val;
+                        validRows++;
+                    }
+                }
+
+                // Parse quantity
+                if (qtyIdx !== -1 && row.cells[qtyIdx]?.value) {
+                    const val = parseFloat(String(row.cells[qtyIdx].value).replace(/,/g, ''));
+                    if (!isNaN(val)) totalQty += val;
+                }
+            });
+
+            // Only add summary if we found monetary values
+            const hasValues = totalAmount > 0 || totalRate > 0;
+
+            return {
+                ...table,
+                extractedSummary: hasValues ? {
+                    totalRate: totalRate.toFixed(2),
+                    totalAmount: totalAmount.toFixed(2),
+                    totalQty: totalQty.toFixed(0),
+                    itemCount: validRows
+                } : null
+            };
+        });
+    }, [tables]);
+
     // Compute Costed Tables (Separate copy)
     const costedTables = useMemo(() => {
         if (!costingFactors) return null;
 
         const grossMargin = (costingFactors.profit + costingFactors.freight + costingFactors.customs + costingFactors.installation) / 100;
         const multiplier = costingFactors.exchangeRate * (1 + grossMargin);
+        const vatRate = (costingFactors.vat || 0) / 100;
 
         return tables.map(table => {
             const header = table.header || [];
             const moneyIndices = header.map((h, i) =>
                 /rate|price|amount|total/i.test(h) ? i : -1
             ).filter(i => i !== -1);
+
+            const amountIdx = header.findIndex(h => /amount|total/i.test(h));
 
             const newRows = table.rows.map(row => {
                 const newCells = row.cells.map((cell, idx) => {
@@ -71,7 +132,30 @@ function TableViewer({ data }) {
                 return { ...row, cells: newCells };
             });
 
-            return { ...table, rows: newRows };
+            // Calculate Summary
+            let subtotal = 0;
+            if (amountIdx !== -1) {
+                subtotal = newRows.reduce((acc, row) => {
+                    if (row.isHeader || row.isSummary) return acc;
+                    const val = parseFloat(String(row.cells[amountIdx]?.value || '0').replace(/,/g, ''));
+                    return acc + (isNaN(val) ? 0 : val);
+                }, 0);
+            }
+
+            const vatAmount = subtotal * vatRate;
+            const grandTotal = subtotal + vatAmount;
+
+            return {
+                ...table,
+                rows: newRows,
+                summary: {
+                    subtotal: subtotal.toFixed(2),
+                    vatAmount: vatAmount.toFixed(2),
+                    grandTotal: grandTotal.toFixed(2),
+                    vatPercent: costingFactors.vat || 0,
+                    currency: costingFactors.toCurrency
+                }
+            };
         });
     }, [tables, costingFactors]);
 
@@ -150,6 +234,9 @@ function TableViewer({ data }) {
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
 
+        // Load Arabic Font
+        const arabicLoaded = await loadArabicFont(doc);
+
         // Premium Color Palette
         const colors = {
             primary: [30, 41, 59],       // Slate 800
@@ -161,45 +248,55 @@ function TableViewer({ data }) {
         };
 
         // ===== COVER PAGE =====
-        // Gradient Header Effect (simulated)
+        // Premium Header Section
         doc.setFillColor(...colors.primary);
-        doc.rect(0, 0, pageWidth, 80, 'F');
+        doc.rect(0, 0, pageWidth, 100, 'F');
+        doc.setFillColor(...colors.secondary);
+        doc.rect(0, 100, pageWidth, 2, 'F');
 
-        // Title
-        doc.setTextColor(...colors.white);
-        doc.setFontSize(32);
-        doc.setFont('helvetica', 'bold');
-        doc.text('COMMERCIAL OFFER', pageWidth / 2, 35, { align: 'center' });
-
-        // Add Company Logo to Cover if available
+        // Add Company Logo to Header if available
         const coverLogo = logoWhite || logoBlue;
         if (coverLogo) {
             try {
                 const docLogo = await getImageData(coverLogo, { format: 'image/png', maxWidth: 800 });
                 if (docLogo) {
-                    const fit = calcFitSize(docLogo.width, docLogo.height, 60, 25);
-                    doc.addImage(docLogo.dataUrl, 'PNG', (pageWidth - fit.w) / 2, 75, fit.w, fit.h);
+                    const fit = calcFitSize(docLogo.width, docLogo.height, 80, 30);
+                    doc.addImage(docLogo.dataUrl, 'PNG', (pageWidth - fit.w) / 2, 15, fit.w, fit.h);
                 }
             } catch (e) { }
+        } else {
+            // Company Name as fallback in Header
+            const cName = companyName || 'COMMERCIAL OFFER';
+            doc.setTextColor(...colors.white);
+            doc.setFontSize(24);
+            const isArabicCName = hasArabic(cName);
+            doc.setFont(isArabicCName && arabicLoaded ? 'Almarai' : 'helvetica', 'bold');
+            doc.text(isArabicCName ? fixArabic(cName) : cName, pageWidth / 2, 30, { align: 'center' });
         }
+
+        // Title
+        doc.setTextColor(...colors.white);
+        doc.setFontSize(30);
+        doc.setFont('helvetica', 'bold');
+        doc.text('COMMERCIAL OFFER', pageWidth / 2, 65, { align: 'center' });
 
         // Subtitle
         doc.setFontSize(14);
         doc.setFont('helvetica', 'normal');
-        doc.text('Bill of Quantities & Pricing Schedule', pageWidth / 2, 50, { align: 'center' });
+        doc.text('Bill of Quantities & Pricing Schedule', pageWidth / 2, 75, { align: 'center' });
 
         // Date Badge
         doc.setFillColor(...colors.secondary);
-        doc.roundedRect(pageWidth / 2 - 30, 60, 60, 12, 3, 3, 'F');
+        doc.roundedRect(pageWidth / 2 - 25, 82, 50, 10, 2, 2, 'F');
         doc.setFontSize(10);
         doc.setTextColor(...colors.primary);
         const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
-        doc.text(today, pageWidth / 2, 68, { align: 'center' });
+        doc.text(today, pageWidth / 2, 88.5, { align: 'center' });
 
         // Document Info Section
         doc.setTextColor(...colors.text);
         doc.setFontSize(11);
-        let infoY = 100;
+        let infoY = 135;
         doc.setFont('helvetica', 'bold');
         doc.text('Document Reference:', 20, infoY);
         doc.setFont('helvetica', 'normal');
@@ -221,12 +318,15 @@ function TableViewer({ data }) {
         // Decorative Line
         doc.setDrawColor(...colors.secondary);
         doc.setLineWidth(2);
-        doc.line(20, infoY + 15, pageWidth - 20, infoY + 15);
+        doc.line(20, infoY + 12, pageWidth - 20, infoY + 12);
 
         // Footer on Cover
         doc.setFontSize(9);
         doc.setTextColor(150, 150, 150);
-        doc.text('Generated by BOQFlow - Intelligent Estimation System', pageWidth / 2, pageHeight - 15, { align: 'center' });
+        const footerText = profile.website || profile.companyName || 'BOQFLOW - Intelligent Estimation System';
+        const isArabicFooter = hasArabic(footerText);
+        doc.setFont(isArabicFooter && arabicLoaded ? 'Almarai' : 'helvetica', 'normal');
+        doc.text(isArabicFooter ? fixArabic(footerText) : footerText, pageWidth / 2, pageHeight - 15, { align: 'center' });
 
         // ===== DATA PAGES =====
         for (const table of sourceTables) {
@@ -237,8 +337,8 @@ function TableViewer({ data }) {
             doc.rect(0, 0, pageWidth, 20, 'F');
             doc.setTextColor(...colors.white);
             doc.setFontSize(12);
-            doc.setFont('helvetica', 'bold');
-            doc.text(table.sheetName || 'Offer Schedule', 10, 13);
+            const sheetTitle = (table.sheetName && !table.sheetName.includes("Combined")) ? table.sheetName : (profile.companyName || 'COMMERCIAL OFFER');
+            doc.text(sheetTitle, 10, 13);
 
             // Company Logo in Header
             const headerLogo = logoWhite || logoBlue;
@@ -267,7 +367,15 @@ function TableViewer({ data }) {
             const colWidths = {};
             const usableWidth = pageWidth - 10; // 5mm margin each side
 
-            header.forEach((h, i) => {
+            const pdfHeader = [...header];
+            pdfHeader.forEach((h, i) => {
+                const headerText = arabicLoaded && hasArabic(h) ? fixArabic(h) : h;
+                pdfHeader[i] = headerText;
+
+                // Use pdfHeader[i] for calculations if needed, but here we just update it
+            });
+
+            pdfHeader.forEach((h, i) => {
                 if (i === snColIdx || (i === 0 && snColIdx === -1)) {
                     colWidths[i] = { cellWidth: 8, halign: 'center' };
                 } else if (i === imgColIdx) {
@@ -325,7 +433,8 @@ function TableViewer({ data }) {
             const head = [header.map((h, i) => i === imgColIdx ? 'Image' : h)];
             const body = table.rows.map(row => row.cells.map((c, i) => {
                 if (i === imgColIdx) return '';
-                return String(c.value || '');
+                const val = String(c.value || '');
+                return (arabicLoaded && hasArabic(val)) ? fixArabic(val) : val;
             }));
 
             autoTable(doc, {
@@ -341,7 +450,7 @@ function TableViewer({ data }) {
                     lineWidth: 0.3,
                     textColor: colors.text,
                     overflow: 'linebreak',
-                    font: 'helvetica',
+                    font: arabicLoaded ? 'Almarai' : 'helvetica',
                     valign: 'middle'
                 },
                 headStyles: {
@@ -402,14 +511,70 @@ function TableViewer({ data }) {
                     }
                 },
                 didDrawPage: (data) => {
-                    doc.setFontSize(7);
+                    doc.setFontSize(8);
                     doc.setTextColor(150, 150, 150);
-                    doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageWidth - 15, pageHeight - 8);
+                    doc.setFont('helvetica', 'normal');
+                    doc.text(`Page ${doc.internal.getNumberOfPages()}`, 10, pageHeight - 8);
+
+                    const fText = profile.website || profile.companyName || '';
+                    const isAr = hasArabic(fText);
+                    doc.setFont(isAr && arabicLoaded ? 'Almarai' : 'helvetica', 'normal');
+                    doc.text(isAr ? fixArabic(fText) : fText, pageWidth - 10, pageHeight - 8, { align: 'right' });
                     doc.setDrawColor(...colors.secondary);
                     doc.setLineWidth(0.5);
                     doc.line(0, pageHeight - 4, pageWidth, pageHeight - 4);
                 }
             });
+
+            // Add Summary Section after table
+            if (table.summary) {
+                const finalY = doc.lastAutoTable.finalY || 25;
+                const summaryX = pageWidth - 70;
+
+                // Ensure summary doesn't go off page
+                if (finalY + 30 > pageHeight - 20) {
+                    doc.addPage();
+                    // Redraw header for new page
+                    doc.setFillColor(...colors.primary);
+                    doc.rect(0, 0, pageWidth, 20, 'F');
+                    doc.setTextColor(...colors.white);
+                    doc.setFontSize(12);
+                    doc.text(`${table.sheetName || 'Offer Schedule'} (Summary)`, 10, 13);
+                }
+
+                let currentY = (doc.lastAutoTable.finalY + 15 > pageHeight - 40) ? 35 : doc.lastAutoTable.finalY + 15;
+                if (doc.lastAutoTable.finalY + 15 > pageHeight - 40) doc.addPage();
+                currentY = doc.lastAutoTable.finalY + 15;
+
+                // Simple Rect for Summary
+                doc.setFillColor(...colors.lightBg);
+                doc.setDrawColor(...colors.primary);
+                doc.setLineWidth(0.1);
+                doc.rect(summaryX - 5, currentY - 8, 70, 32, 'F');
+
+                doc.setFontSize(9);
+                doc.setTextColor(...colors.text);
+                doc.setFont('helvetica', 'normal');
+
+                doc.text('Subtotal:', summaryX, currentY);
+                doc.text(`${table.summary.subtotal} ${table.summary.currency}`, pageWidth - 10, currentY, { align: 'right' });
+
+                currentY += 7;
+                doc.text(`VAT (${table.summary.vatPercent}%):`, summaryX, currentY);
+                doc.text(`${table.summary.vatAmount} ${table.summary.currency}`, pageWidth - 10, currentY, { align: 'right' });
+
+                currentY += 10;
+                doc.setFont('helvetica', 'bold');
+                doc.setTextColor(...colors.primary);
+                doc.setFontSize(11);
+                doc.text('GRAND TOTAL:', summaryX, currentY);
+                doc.text(`${table.summary.grandTotal} ${table.summary.currency}`, pageWidth - 10, currentY, { align: 'right' });
+
+                // Decorative accent for total
+                doc.setDrawColor(...colors.secondary);
+                doc.setLineWidth(1);
+                doc.line(summaryX, currentY + 2, pageWidth - 10, currentY + 2);
+            }
         }
 
         doc.save(`${filename}.pdf`);
@@ -431,6 +596,13 @@ function TableViewer({ data }) {
             const header = table.header || [];
             const imgColIdx = header.findIndex(h => /image|photo|picture/i.test(h));
             const descColIdx = header.findIndex(h => /description|desc/i.test(h));
+
+            const hasArInHeader = header.some(h => hasArabic(h));
+            const hasArInBody = table.rows.some(r => r.cells.some(c => hasArabic(c.value)));
+
+            if (hasArInHeader || hasArInBody) {
+                ws.views = [{ rightToLeft: true }];
+            }
 
             // Add header row
             if (header.length > 0) {
@@ -462,7 +634,7 @@ function TableViewer({ data }) {
                         for (const img of allImages) {
                             if (img?.url) {
                                 try {
-                                    const imgResult = await getImageData(getFullUrl(img.url), { maxWidth: 300, format: 'image/jpeg' });
+                                    const imgResult = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg', quality: 0.95 });
                                     if (imgResult) {
                                         const base64 = imgResult.dataUrl.split(',')[1];
                                         const imageId = workbook.addImage({
@@ -559,9 +731,52 @@ function TableViewer({ data }) {
             });
 
             ws.views = [{ state: 'frozen', ySplit: 1 }];
+            const summaryStartCol = Math.max(header.length - 1, 1);
 
-            const summaryRow = ws.addRow([`Total: ${table.rows.length} items`]);
-            summaryRow.getCell(1).font = { bold: true, color: { argb: 'F59E0B' } };
+            if (table.summary) {
+                ws.addRow([]); // Gap
+
+                // Subtotal
+                const subtotalRow = ws.addRow([]);
+                subtotalRow.getCell(summaryStartCol).value = 'Subtotal:';
+                subtotalRow.getCell(summaryStartCol + 1).value = `${table.summary.subtotal} ${table.summary.currency}`;
+                subtotalRow.getCell(summaryStartCol).font = { bold: true };
+                subtotalRow.getCell(summaryStartCol + 1).alignment = { horizontal: 'right' };
+
+                // VAT
+                const vatRow = ws.addRow([]);
+                vatRow.getCell(summaryStartCol).value = `VAT (${table.summary.vatPercent}%):`;
+                vatRow.getCell(summaryStartCol + 1).value = `${table.summary.vatAmount} ${table.summary.currency}`;
+                vatRow.getCell(summaryStartCol + 1).alignment = { horizontal: 'right' };
+
+                // Grand Total
+                const totalRow = ws.addRow([]);
+                totalRow.getCell(summaryStartCol).value = 'GRAND TOTAL:';
+                totalRow.getCell(summaryStartCol + 1).value = `${table.summary.grandTotal} ${table.summary.currency}`;
+
+                const totalLabelCell = totalRow.getCell(summaryStartCol);
+                const totalValueCell = totalRow.getCell(summaryStartCol + 1);
+
+                [totalLabelCell, totalValueCell].forEach(cell => {
+                    cell.font = { bold: true, size: 12, color: { argb: 'FFFFFF' } };
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1E293B' } };
+                    cell.alignment = { horizontal: cell === totalValueCell ? 'right' : 'left' };
+                    cell.border = {
+                        top: { style: 'medium', color: { argb: 'F59E0B' } },
+                        bottom: { style: 'medium', color: { argb: 'F59E0B' } }
+                    };
+                });
+
+                // Add Website Footer
+                ws.addRow([]);
+                const footerRow = ws.addRow([]);
+                footerRow.getCell(1).value = `Generated by ${profile.companyName} - ${profile.website}`;
+                footerRow.getCell(1).font = { italic: true, size: 9, color: { argb: '94A3B8' } };
+                ws.mergeCells(footerRow.number, 1, footerRow.number, 5);
+            } else {
+                const summaryRow = ws.addRow([`Total: ${table.rows.length} items`]);
+                summaryRow.getCell(1).font = { bold: true, color: { argb: 'F59E0B' } };
+            }
         }
 
         const buffer = await workbook.xlsx.writeBuffer();
@@ -575,6 +790,9 @@ function TableViewer({ data }) {
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
+
+        const arabicLoaded = await loadArabicFont(doc);
+
         let pageAdded = false;
         let itemNumber = 1;
 
@@ -725,23 +943,25 @@ function TableViewer({ data }) {
                 const brand = brandIdx > -1 ? row.cells[brandIdx].value : 'N/A';
                 const qty = qtyIdx > -1 ? row.cells[qtyIdx].value : 'As per BOQ';
 
+                const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
+
                 autoTable(doc, {
                     startY: contentY,
                     margin: { left: 15, right: 15 },
-                    head: [['Specification', 'Details']],
+                    head: [[processText('Specification'), processText('Details')]],
                     body: [
-                        ['Description', String(desc)],
-                        ['Brand / Origin', String(brand)],
-                        ['Quantity', String(qty)],
-                        ['Warranty', 'As per manufacturer (5 years)'],
-                        ['Compliance', 'As per project specifications']
+                        [processText('Description'), processText(desc)],
+                        [processText('Brand / Origin'), processText(brand)],
+                        [processText('Quantity'), processText(qty)],
+                        [processText('Warranty'), processText('As per manufacturer (5 years)')],
+                        [processText('Compliance'), processText('As per project specifications')]
                     ],
                     theme: 'striped',
                     styles: {
                         fontSize: 9,
                         cellPadding: 3,
                         textColor: colors.text,
-                        font: 'helvetica',
+                        font: arabicLoaded ? 'Almarai' : 'helvetica',
                         overflow: 'linebreak'
                     },
                     headStyles: {
@@ -878,14 +1098,13 @@ function TableViewer({ data }) {
                 const qty = qtyIdx > -1 ? String(row.cells[qtyIdx].value || '') : '';
                 const finish = finishIdx > -1 ? String(row.cells[finishIdx].value || '') : '';
 
-                // Truncate description for title
-                const titleText = desc.length > 60 ? desc.substring(0, 57) + '...' : desc;
+                // Extract first line/product name for header (short, no overflow)
+                const firstLine = desc.split(/[\n*•]/)[0].trim();
+                const headerTitle = firstLine.length > 50 ? firstLine.substring(0, 47) + '...' : firstLine;
 
-                // ===== HEADER =====
-                // Item title in header
-                slide.addText(`Item ${itemNum}: ${titleText}`, {
-                    x: 0.2, y: 0.15, w: 7, h: 0.45,
-                    fontSize: 16, bold: true, color: 'FFFFFF', fontFace: 'Arial'
+                slide.addText(`Item ${itemNum}: ${headerTitle}`, {
+                    x: 0.2, y: 0.15, w: 8.0, h: 0.4,
+                    fontSize: 14, color: brandColors.bg, bold: true, fontFace: 'Arial', valign: 'middle'
                 });
 
                 // Company logo area (top right)
@@ -1046,55 +1265,73 @@ function TableViewer({ data }) {
                 });
                 detailY += 0.28;
 
-                const descText = desc.length > 300 ? desc.substring(0, 297) + '...' : desc;
-                slide.addText(descText, {
-                    x: detailX, y: detailY, w: detailW, h: 1.0,
-                    fontSize: 10, color: brandColors.text, fontFace: 'Arial', valign: 'top'
+                // Full description with word wrap - capped height to fit slide
+                const fullDesc = desc.trim();
+                // Max height: leave room for Brand, Qty, Specs (~1.5") before footer at 4.7"
+                const maxDescY = 3.5; // Max Y position after description
+                const availableDescH = maxDescY - detailY;
+                const estLines = Math.ceil(fullDesc.length / 60) + (fullDesc.match(/[\n*•]/g) || []).length;
+                const descBoxH = Math.min(availableDescH, Math.max(0.4, estLines * 0.15));
+
+                slide.addText(fullDesc, {
+                    x: detailX, y: detailY, w: detailW, h: descBoxH,
+                    fontSize: 9, color: brandColors.text, fontFace: 'Arial', valign: 'top',
+                    wrap: true, shrinkText: true
                 });
-                detailY += 1.1;
+                detailY += descBoxH + 0.08;
+
+                // Ensure we don't overflow - cap at safe Y
+                const maxContentY = 4.5; // Footer starts around 4.7"
 
                 // Brand sub-section
-                slide.addText('Brand:', {
-                    x: detailX, y: detailY, w: 1, h: 0.25,
-                    fontSize: 11, bold: true, color: brandColors.text, fontFace: 'Arial'
-                });
-                slide.addText(brand || 'N/A', {
-                    x: detailX + 0.6, y: detailY, w: detailW - 0.6, h: 0.25,
-                    fontSize: 10, color: brandColors.text, fontFace: 'Arial'
-                });
-                detailY += 0.35;
+                if (detailY < maxContentY - 0.3) {
+                    slide.addText('Brand:', {
+                        x: detailX, y: detailY, w: 1, h: 0.22,
+                        fontSize: 10, bold: true, color: brandColors.text, fontFace: 'Arial'
+                    });
+                    slide.addText(brand || 'N/A', {
+                        x: detailX + 0.55, y: detailY, w: detailW - 0.55, h: 0.22,
+                        fontSize: 9, color: brandColors.text, fontFace: 'Arial'
+                    });
+                    detailY += 0.28;
+                }
 
                 // Quantity sub-section
-                slide.addText('Quantity:', {
-                    x: detailX, y: detailY, w: 1.2, h: 0.25,
-                    fontSize: 11, bold: true, color: brandColors.text, fontFace: 'Arial'
-                });
-                slide.addText(qty || 'As per BOQ', {
-                    x: detailX + 0.8, y: detailY, w: detailW - 0.8, h: 0.25,
-                    fontSize: 10, color: brandColors.text, fontFace: 'Arial'
-                });
-                detailY += 0.45;
-
-                // Specifications sub-section
-                slide.addText('Specifications:', {
-                    x: detailX, y: detailY, w: detailW, h: 0.25,
-                    fontSize: 11, bold: true, color: brandColors.primary, fontFace: 'Arial'
-                });
-                detailY += 0.3;
-
-                // Build specifications from available data
-                const specs = [];
-                if (finish) specs.push(`• Finish: ${finish}`);
-                if (desc.includes('mm')) {
-                    const sizeMatch = desc.match(/\d+\s*[xX×]\s*\d+\s*(mm|cm)?/);
-                    if (sizeMatch) specs.push(`• Dimensions: ${sizeMatch[0]}`);
+                if (detailY < maxContentY - 0.3) {
+                    slide.addText('Quantity:', {
+                        x: detailX, y: detailY, w: 1, h: 0.22,
+                        fontSize: 10, bold: true, color: brandColors.text, fontFace: 'Arial'
+                    });
+                    slide.addText(qty || 'As per BOQ', {
+                        x: detailX + 0.7, y: detailY, w: detailW - 0.7, h: 0.22,
+                        fontSize: 9, color: brandColors.text, fontFace: 'Arial'
+                    });
+                    detailY += 0.28;
                 }
-                specs.push('• Warranty: As per manufacturer');
 
-                slide.addText(specs.join('\n') || '• As per manufacturer specifications', {
-                    x: detailX + 0.15, y: detailY, w: detailW - 0.15, h: 1.2,
-                    fontSize: 9, color: brandColors.text, fontFace: 'Arial', valign: 'top'
-                });
+                // Specifications sub-section - only if space available
+                if (detailY < maxContentY - 0.4) {
+                    slide.addText('Specifications:', {
+                        x: detailX, y: detailY, w: detailW, h: 0.22,
+                        fontSize: 10, bold: true, color: brandColors.primary, fontFace: 'Arial'
+                    });
+                    detailY += 0.22;
+
+                    // Build specifications from available data
+                    const specs = [];
+                    if (finish) specs.push(`• Finish: ${finish}`);
+                    if (desc.includes('mm')) {
+                        const sizeMatch = desc.match(/\d+\s*[xX×]\s*\d+\s*(mm|cm)?/);
+                        if (sizeMatch) specs.push(`• Dimensions: ${sizeMatch[0]}`);
+                    }
+                    specs.push('• Warranty: As per manufacturer');
+
+                    const specsH = Math.min(maxContentY - detailY, 0.6);
+                    slide.addText(specs.join('\n') || '• As per manufacturer specifications', {
+                        x: detailX + 0.1, y: detailY, w: detailW - 0.1, h: specsH,
+                        fontSize: 8, color: brandColors.text, fontFace: 'Arial', valign: 'top'
+                    });
+                }
 
                 // ===== FOOTER =====
                 // Warranty notice
@@ -1203,11 +1440,21 @@ function TableViewer({ data }) {
                 doc.setFillColor(...colors.accent);
                 doc.rect(0, 25, pageWidth, 2, 'F');
 
-                // Item title in header
+                // Item title in header - handle multi-line if needed
+                const arabicLoaded = await loadArabicFont(doc);
+                const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
+
                 doc.setTextColor(...colors.bg);
                 doc.setFontSize(14);
-                doc.setFont('helvetica', 'bold');
-                doc.text(`Item ${itemNumber}: ${titleText}`, 8, 15);
+                doc.setFont(arabicLoaded ? 'Almarai' : 'helvetica', 'bold');
+
+                const fullTitle = `Item ${itemNumber}: ${titleText}`;
+                const titleLines = doc.splitTextToSize(processText(fullTitle), pageWidth - 70);
+                let currentTitleY = 12;
+                titleLines.slice(0, 2).forEach(tl => {
+                    doc.text(tl, 8, currentTitleY);
+                    currentTitleY += 7;
+                });
 
                 // Company logo area (top right)
                 // This PDF version has a white background in the header area, so prefer original logo
@@ -1301,8 +1548,8 @@ function TableViewer({ data }) {
                 // "Product Details" Header
                 doc.setTextColor(...colors.primary);
                 doc.setFontSize(16);
-                doc.setFont('helvetica', 'bold');
-                doc.text('Product Details', detailX, detailY);
+                doc.setFont(arabicLoaded ? 'Almarai' : 'helvetica', 'bold');
+                doc.text(processText('Product Details'), detailX, detailY);
                 detailY += 10;
 
                 // Description sub-section
@@ -1312,20 +1559,27 @@ function TableViewer({ data }) {
                 doc.text('Description:', detailX, detailY);
                 detailY += 5;
 
-                doc.setFont('helvetica', 'normal');
+                doc.setFont(arabicLoaded ? 'Almarai' : 'helvetica', 'normal');
                 doc.setFontSize(9);
                 const descText = desc.length > 350 ? desc.substring(0, 347) + '...' : desc;
-                const descLines = doc.splitTextToSize(descText, detailW);
-                doc.text(descLines.slice(0, 8), detailX, detailY);
-                detailY += Math.min(descLines.length, 8) * 4 + 8;
+
+                // Break into manual lines for precise control
+                const rawLines = doc.splitTextToSize(processText(descText), detailW);
+                const displayLines = rawLines.slice(0, 12);
+
+                displayLines.forEach((line) => {
+                    doc.text(line, detailX, detailY);
+                    detailY += 7; // Increased to 7 for better spacing
+                });
+                detailY += 6;
 
                 // Brand sub-section
                 doc.setFont('helvetica', 'bold');
                 doc.setFontSize(10);
                 doc.text('Brand:', detailX, detailY);
                 doc.setFont('helvetica', 'normal');
-                doc.text(brand || 'N/A', detailX + 18, detailY);
-                detailY += 8;
+                doc.text(brand || 'N/A', detailX + 22, detailY);
+                detailY += 8; // Adjusted padding
 
                 // Quantity sub-section
                 doc.setFont('helvetica', 'bold');
@@ -1373,7 +1627,10 @@ function TableViewer({ data }) {
                 // Page URL/reference
                 doc.setTextColor(...colors.primary);
                 doc.setFontSize(7);
-                doc.text('https://alshayaenterprises.com', pageWidth / 2, pageHeight - 6, { align: 'center' });
+                const footerVal = profile.website || profile.companyName || 'BOQFLOW';
+                const footerIsAr = hasArabic(footerVal);
+                doc.setFont(footerIsAr && arabicLoaded ? 'Almarai' : 'helvetica', 'normal');
+                doc.text(footerIsAr ? fixArabic(footerVal) : footerVal, pageWidth / 2, pageHeight - 6, { align: 'center' });
 
                 // Page number
                 doc.setTextColor(...colors.lightText);
@@ -1383,6 +1640,38 @@ function TableViewer({ data }) {
             }
         }
         doc.save('presentation_export.pdf');
+    };
+
+    // Helper to format numbers with max 3 decimals and thousand separators
+    const formatNumber = (value, header) => {
+        if (!value) return value;
+        const strVal = String(value).trim();
+
+        // Only format if the column is a known numeric type
+        const isMoneyCol = /rate|price|amount|total/i.test(header || '');
+        const isQtyCol = /qty|quantity/i.test(header || '');
+
+        // Skip formatting for description/text columns
+        if (!isMoneyCol && !isQtyCol) return value;
+
+        // Check if value is purely numeric (with optional commas and decimals)
+        // This regex ensures we don't format text like "45 series..." or "1/2 x 3/8..."
+        const cleanVal = strVal.replace(/,/g, '');
+        if (!/^-?\d+(\.\d+)?$/.test(cleanVal)) return value;
+
+        const num = parseFloat(cleanVal);
+        if (isNaN(num)) return value;
+
+        if (isQtyCol) {
+            // For qty columns: no forced decimals
+            return num.toLocaleString(undefined, { maximumFractionDigits: 0 });
+        }
+
+        // For money columns: max 3 decimals, thousand separators
+        return num.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 3
+        });
     };
 
     // Helper to render a table list
@@ -1436,7 +1725,7 @@ function TableViewer({ data }) {
                                                     suppressContentEditableWarning
                                                     onBlur={(e) => !isCosted && handleCellChange(tableIndex, rowIndex, cellIndex, e.target.innerText)}
                                                 >
-                                                    {cell.value}
+                                                    {row.isHeader ? cell.value : formatNumber(cell.value, table.header?.[cellIndex])}
                                                 </div>
                                             </CellTag>
                                         );
@@ -1453,6 +1742,46 @@ function TableViewer({ data }) {
                         </tbody>
                     </table>
                 </div>
+
+                {isCosted && table.summary && (
+                    <div className={styles.summarySection}>
+                        <div className={styles.summaryDetailRow}>
+                            <span>Subtotal:</span>
+                            <span>{table.summary.subtotal} {table.summary.currency}</span>
+                        </div>
+                        <div className={styles.summaryDetailRow}>
+                            <span>VAT ({table.summary.vatPercent}%):</span>
+                            <span>{table.summary.vatAmount} {table.summary.currency}</span>
+                        </div>
+                        <div className={styles.summaryTotal}>
+                            <span>Grand Total:</span>
+                            <span>{table.summary.grandTotal} {table.summary.currency}</span>
+                        </div>
+                    </div>
+                )}
+
+                {!isCosted && table.extractedSummary && (
+                    <div className={styles.summarySection} style={{ borderColor: '#3b82f6' }}>
+                        <div className={styles.summaryDetailRow}>
+                            <span>Total Items:</span>
+                            <span>{table.extractedSummary.itemCount}</span>
+                        </div>
+                        <div className={styles.summaryDetailRow}>
+                            <span>Total Quantity:</span>
+                            <span>{parseFloat(table.extractedSummary.totalQty).toLocaleString()}</span>
+                        </div>
+                        {parseFloat(table.extractedSummary.totalRate) > 0 && (
+                            <div className={styles.summaryDetailRow}>
+                                <span>Sum of Rates:</span>
+                                <span>{parseFloat(table.extractedSummary.totalRate).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                            </div>
+                        )}
+                        <div className={styles.summaryTotal} style={{ color: '#3b82f6' }}>
+                            <span>Total Amount:</span>
+                            <span>{parseFloat(table.extractedSummary.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                        </div>
+                    </div>
+                )}
             </div>
         ))
     );
@@ -1468,7 +1797,7 @@ function TableViewer({ data }) {
             </div>
 
             {/* Render Original Tables */}
-            {renderTableList(tables, false)}
+            {renderTableList(tablesWithSummary, false)}
 
             {/* Set of Actions for Original Tables */}
             <div className={actionStyles.actionBar}>

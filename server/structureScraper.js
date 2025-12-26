@@ -29,6 +29,13 @@ class StructureScraper {
     async scrapeBrand(url, brandNameOverride = null, onProgress = null) {
         console.log(`\n🏗️ [Structure Scraper] Starting hierarchical harvest for: ${url}`);
 
+        // Check if running on Vercel serverless (Playwright won't work)
+        const isVercel = process.env.VERCEL === '1';
+        if (isVercel) {
+            console.error('❌ Structure scraping not supported on Vercel serverless.');
+            throw new Error('Web scraping is not available in the deployed environment. Please use the local development server for scraping operations, then sync brands to the cloud.');
+        }
+
         const products = [];
         const visitedUrls = new Set();
         const baseUrl = new URL(url).origin;

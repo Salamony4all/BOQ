@@ -3,7 +3,8 @@
     "functions": {
         "api/index.js": {
             "includeFiles": "server/data/brands/**",
-            "maxDuration": 60
+            "maxDuration": 300,
+            "memory": 3008
         }
     },
     "rewrites": [

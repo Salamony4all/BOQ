@@ -9,6 +9,7 @@ const STORAGE_KEY = 'boqflow_company_profile';
 // Default empty profile
 const DEFAULT_PROFILE = {
     companyName: '',
+    website: '',
     logo: null, // { base64, width, height, isLight, whiteLogo }
     setupComplete: false
 };
@@ -74,11 +75,12 @@ export function CompanyProvider({ children }) {
         return saveProfile(updated);
     }, [profile, saveProfile]);
 
-    // Update profile (one logo now)
-    const updateProfile = useCallback((name, logoData) => {
+    // Update profile
+    const updateProfile = useCallback((name, logoData, website) => {
         const updated = {
             ...profile,
             companyName: name,
+            website: website !== undefined ? website : profile.website,
             logo: logoData !== undefined ? logoData : profile.logo
         };
         return saveProfile(updated);
@@ -178,6 +180,7 @@ export function CompanyProvider({ children }) {
     const value = {
         // Profile data
         companyName: profile.companyName,
+        website: profile.website || '',
         logo: profile.logo,
         logoWhite: profile.logo?.whiteLogo,
         logoBlue: profile.logo?.base64,

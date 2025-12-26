@@ -1,9 +1,0 @@
-{
-	"id": "YPadvMLpgB23vkN",
-	"json": "{\"id\":\"YPadvMLpgB23vkN\",\"url\":\"https://www.architonic.com/en/b/ofifran/products/3104433/\",\"loadedUrl\":\"https://www.architonic.com/en/b/ofifran/products/3104433/\",\"uniqueKey\":\"https://www.architonic.com/en/b/ofifran/products/3104433\",\"method\":\"GET\",\"noRetry\":false,\"retryCount\":1,\"errorMessages\":[\"Error: EPERM: operation not permitted, mkdir 'C:\\\\Users\\\\Mohamad60025\\\\Desktop\\\\App\\\\BOQ\\\\storage\\\\request_queues\\\\default\\\\FiUt8hhsTNO6omE.json.lock'\"],\"headers\":{},\"userData\":{\"label\":\"COLLECTION\",\"__crawlee\":{\"state\":4}},\"handledAt\":\"2025-12-23T12:20:01.715Z\"}",
-	"method": "GET",
-	"orderNo": null,
-	"retryCount": 1,
-	"uniqueKey": "https://www.architonic.com/en/b/ofifran/products/3104433",
-	"url": "https://www.architonic.com/en/b/ofifran/products/3104433/"
-}
