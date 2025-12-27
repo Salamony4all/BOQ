@@ -3,7 +3,7 @@
   "retiredSessionsCount": 1,
   "sessions": [
     {
-      "id": "session_L4ORBAJqNe",
+      "id": "session_3fvg1zPl9b",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -16,14 +16,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:42:44.317Z",
-      "createdAt": "2025-12-27T11:52:44.317Z",
+      "expiresAt": "2025-12-27T13:28:47.327Z",
+      "createdAt": "2025-12-27T12:38:47.327Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_nwSaafvAQ1",
+      "id": "session_jBlVQbbmNs",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -36,14 +36,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:42:44.332Z",
-      "createdAt": "2025-12-27T11:52:44.332Z",
+      "expiresAt": "2025-12-27T13:28:47.337Z",
+      "createdAt": "2025-12-27T12:38:47.337Z",
       "usageCount": 4,
       "maxUsageCount": 50,
       "errorScore": 6
     },
     {
-      "id": "session_lKHDtk0oBC",
+      "id": "session_WOHSfIvuma",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -56,14 +56,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:42:47.707Z",
-      "createdAt": "2025-12-27T11:52:47.707Z",
+      "expiresAt": "2025-12-27T13:28:59.174Z",
+      "createdAt": "2025-12-27T12:38:59.174Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_JBkKi0lgNz",
+      "id": "session_qxh67EBm8H",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -76,14 +76,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:42:50.344Z",
-      "createdAt": "2025-12-27T11:52:50.344Z",
+      "expiresAt": "2025-12-27T13:29:01.967Z",
+      "createdAt": "2025-12-27T12:39:01.967Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_XXPMayBomH",
+      "id": "session_WubtglrYpZ",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -96,14 +96,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:42:51.972Z",
-      "createdAt": "2025-12-27T11:52:51.972Z",
+      "expiresAt": "2025-12-27T13:29:07.744Z",
+      "createdAt": "2025-12-27T12:39:07.744Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_B9fgaY71yR",
+      "id": "session_dHENYCnNQl",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -116,8 +116,8 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:42:51.974Z",
-      "createdAt": "2025-12-27T11:52:51.974Z",
+      "expiresAt": "2025-12-27T13:29:07.748Z",
+      "createdAt": "2025-12-27T12:39:07.748Z",
       "usageCount": 1,
       "maxUsageCount": 50,
       "errorScore": 1

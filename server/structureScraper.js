@@ -52,7 +52,7 @@ class StructureScraper {
             maxConcurrency: 2, // Reduced for CPU stability
             maxRequestsPerCrawl: 300,
             navigationTimeoutSecs: 60,
-            headless: true,
+            headless: false, // Debugging: Show the browser!
 
             requestHandler: async ({ page, request, enqueueLinks }) => {
                 // Check for external cancellation
