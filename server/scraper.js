@@ -70,15 +70,18 @@ class ScraperService {
             '[class*="product-image"] img', '[class*="ProductImage"] img'
         ];
 
-        // Suppress Crawlee logs and ensure it knows about the increased memory
+        // === MEMORY OPTIMIZATION FOR VERCEL HOBBY PLAN (2048 MB) ===
         log.setLevel(log.LEVELS.WARNING);
-        process.env.CRAWLEE_MEMORY_MB = '16384'; // Set high to prevent artificial software limits
-        process.env.CRAWLEE_AVAILABLE_MEMORY_RATIO = '0.95';
+
+        // Configure Crawlee for low-memory environment
+        process.env.CRAWLEE_MEMORY_MB = '1800'; // Leave headroom below 2048 limit
+        process.env.CRAWLEE_AVAILABLE_MEMORY_RATIO = '0.85'; // Conservative ratio
 
         const config = Configuration.getGlobalConfig();
         config.set('logLevel', 'WARNING');
-        config.set('maxUsedMemoryRatio', 0.95); // Don't throttle until 95% used
+        config.set('maxUsedMemoryRatio', 0.80); // Start throttling at 80% to prevent OOM
         config.set('maxRequestRetries', 1); // Fail faster if memory is tight
+        config.set('persistStorage', false); // Don't persist to disk (read-only on Vercel)
     }
 
     // ===================== UTILITIES =====================
@@ -389,11 +392,49 @@ class ScraperService {
         if (onProgress) onProgress(20, 'Discovering Categories...');
 
         const crawler = new PlaywrightCrawler({
-            maxConcurrency: 2,
-            maxRequestsPerCrawl: 200, // Limit for safety
-            requestHandlerTimeoutSecs: 60,
-            navigationTimeoutSecs: 45,
+            maxConcurrency: 1, // Single browser for memory efficiency
+            maxRequestsPerCrawl: 150, // Reduced for memory safety
+            requestHandlerTimeoutSecs: 45,
+            navigationTimeoutSecs: 30,
             headless: true,
+
+            // === MEMORY-OPTIMIZED BROWSER SETTINGS ===
+            launchContext: {
+                launchOptions: {
+                    args: [
+                        '--disable-gpu',
+                        '--disable-dev-shm-usage',
+                        '--disable-setuid-sandbox',
+                        '--no-sandbox',
+                        '--disable-extensions',
+                        '--disable-background-networking',
+                        '--disable-default-apps',
+                        '--disable-sync',
+                        '--disable-translate',
+                        '--hide-scrollbars',
+                        '--mute-audio',
+                        '--no-first-run',
+                        '--disable-features=TranslateUI',
+                        '--disable-ipc-flooding-protection',
+                        '--single-process', // Critical for memory
+                        '--memory-pressure-off',
+                        '--js-flags=--max-old-space-size=512' // Limit V8 heap
+                    ]
+                }
+            },
+
+            // Block heavy resources to save memory
+            preNavigationHooks: [
+                async ({ page }) => {
+                    await page.route('**/*', (route) => {
+                        const type = route.request().resourceType();
+                        if (['image', 'font', 'media', 'stylesheet', 'websocket', 'manifest', 'texttrack'].includes(type)) {
+                            return route.abort();
+                        }
+                        return route.continue();
+                    });
+                }
+            ],
 
             requestHandler: async ({ page, request, enqueueLinks }) => {
                 const { label, category, isProductPage } = request.userData || {};
@@ -547,21 +588,44 @@ class ScraperService {
 
         const storageId = `architonic_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         const crawler = new PlaywrightCrawler({
-            maxConcurrency: 10,
+            // === MEMORY-OPTIMIZED FOR VERCEL HOBBY (2048 MB) ===
+            maxConcurrency: 3, // Reduced from 10 for memory efficiency
             minConcurrency: 1,
-            maxRequestsPerCrawl: 10000,
+            maxRequestsPerCrawl: 500, // Reduced from 10000 to prevent OOM
             useSessionPool: false,
             persistCookiesPerSession: false,
-            requestHandlerTimeoutSecs: 300, // Increased for heavy brands
-            navigationTimeoutSecs: 90,
+            requestHandlerTimeoutSecs: 120, // Reduced timeout
+            navigationTimeoutSecs: 45, // Reduced from 90
+
+            // Memory-optimized browser settings
+            launchContext: {
+                launchOptions: {
+                    args: [
+                        '--disable-gpu',
+                        '--disable-dev-shm-usage',
+                        '--no-sandbox',
+                        '--disable-extensions',
+                        '--disable-background-networking',
+                        '--single-process',
+                        '--disable-features=TranslateUI',
+                        '--js-flags=--max-old-space-size=512'
+                    ]
+                }
+            },
 
             async requestHandler({ request, page, enqueueLinks, log }) {
                 console.log(`\n📄 [RequestHandler] Processing: ${request.url}`);
 
-                // Aggressive Optimization: Block CSS, Images, and Fonts to save memory
+                // Aggressive Memory Optimization: Block ALL non-essential resources
                 await page.route('**/*', (route) => {
                     const type = route.request().resourceType();
-                    if (['image', 'font', 'media', 'stylesheet'].includes(type) && !route.request().url().includes('logo')) {
+                    const url = route.request().url();
+                    // Block images, fonts, CSS, media, websockets - keep only document/script/xhr
+                    if (['image', 'font', 'media', 'stylesheet', 'websocket', 'manifest', 'texttrack'].includes(type)) {
+                        // Exception: allow logo images
+                        if (type === 'image' && url.includes('logo')) {
+                            return route.continue();
+                        }
                         return route.abort();
                     }
                     return route.continue();
