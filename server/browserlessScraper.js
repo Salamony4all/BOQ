@@ -7,6 +7,9 @@ import puppeteer from 'puppeteer-core';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 
+// Helper function to delay (Puppeteer doesn't have waitForTimeout)
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 class BrowserlessScraper {
     constructor() {
         this.browserlessEndpoint = process.env.BROWSERLESS_API_KEY
@@ -120,7 +123,7 @@ class BrowserlessScraper {
             if (onProgress) onProgress(15, 'Navigating to brand page...');
 
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-            await page.waitForTimeout(3000);
+            await delay(3000);
 
             // Extract brand name
             if (onProgress) onProgress(20, 'Identifying brand...');
@@ -160,7 +163,7 @@ class BrowserlessScraper {
                     }
                 });
             });
-            await page.waitForTimeout(2000);
+            await delay(2000);
 
             // Find collection links
             if (onProgress) onProgress(30, 'Discovering collections...');
@@ -199,7 +202,7 @@ class BrowserlessScraper {
                     if (onProgress) onProgress(progress, `Scraping collection ${collectionIndex}/${uniqueCollections.length}...`);
 
                     await page.goto(collUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-                    await page.waitForTimeout(2000);
+                    await delay(2000);
 
                     // Get collection name
                     let collectionName = await page.$eval('h1', el => el.innerText).catch(() => 'Collection');
@@ -232,7 +235,7 @@ class BrowserlessScraper {
                     for (const prodUrl of uniqueProductLinks) {
                         try {
                             await page.goto(prodUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-                            await page.waitForTimeout(1500);
+                            await delay(1500);
 
                             const productData = await page.evaluate(() => {
                                 const name = document.querySelector('h1')?.innerText?.trim() || '';
@@ -369,7 +372,7 @@ class BrowserlessScraper {
                 for (const prodUrl of uniqueDirectProducts.slice(0, 20)) {
                     try {
                         await page.goto(prodUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
-                        await page.waitForTimeout(1500);
+                        await delay(1500);
 
                         const productData = await page.evaluate(() => {
                             const name = document.querySelector('h1')?.innerText?.trim() || '';
@@ -476,7 +479,7 @@ class BrowserlessScraper {
             if (onProgress) onProgress(20, 'Navigating to site...');
 
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-            await page.waitForTimeout(3000);
+            await delay(3000);
 
             // Scroll to load content
             await page.evaluate(async () => {
