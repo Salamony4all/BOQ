@@ -433,6 +433,15 @@ app.delete('/api/tasks/:id', (req, res) => {
 
 // --- Scraping Endpoint ---
 app.post('/api/scrape-brand', async (req, res) => {
+  // Immediate check: Scraping not available on Vercel serverless
+  if (isVercel) {
+    return res.status(503).json({
+      error: 'Scraping Unavailable on Cloud',
+      details: 'Web scraping requires a browser (Chromium) which cannot run on Vercel serverless functions. Please run the scraper locally using "npm run dev" and sync brands to the cloud.',
+      isVercelLimitation: true
+    });
+  }
+
   try {
     const { url } = req.body;
 
@@ -493,6 +502,15 @@ app.post('/api/scrape-brand', async (req, res) => {
 
 // --- AI-Powered Scraping Endpoint (Universal) ---
 app.post('/api/scrape-ai', async (req, res) => {
+  // Immediate check: Scraping not available on Vercel serverless
+  if (isVercel) {
+    return res.status(503).json({
+      error: 'Scraping Unavailable on Cloud',
+      details: 'Web scraping requires a browser (Chromium) which cannot run on Vercel serverless functions. Please run the scraper locally using "npm run dev" and sync brands to the cloud.',
+      isVercelLimitation: true
+    });
+  }
+
   try {
     const { url, name, budgetTier = 'mid', origin = 'UNKNOWN', maxProducts = 10000 } = req.body;
 
