@@ -3,7 +3,7 @@
   "retiredSessionsCount": 1,
   "sessions": [
     {
-      "id": "session_HDy9AGyPk7",
+      "id": "session_L4ORBAJqNe",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -16,14 +16,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:34:51.878Z",
-      "createdAt": "2025-12-27T11:44:51.878Z",
+      "expiresAt": "2025-12-27T12:42:44.317Z",
+      "createdAt": "2025-12-27T11:52:44.317Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_avF6fx62MS",
+      "id": "session_nwSaafvAQ1",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -31,44 +31,19 @@
         "enableLooseMode": false,
         "allowSpecialUseDomain": true,
         "prefixSecurity": "silent",
-        "cookies": [
-          {
-            "key": "ARRAffinity",
-            "value": "473472712743b3bf2ea880d4d317f1bc3b372d2a71532367ed2107d7397e6972",
-            "expires": "2025-12-27T12:34:55.191Z",
-            "domain": "weblock.pandasecurity.com",
-            "path": "/",
-            "secure": true,
-            "httpOnly": true,
-            "hostOnly": false,
-            "creation": "2025-12-27T11:44:55.192Z",
-            "lastAccessed": "2025-12-27T11:44:55.192Z"
-          },
-          {
-            "key": "ARRAffinitySameSite",
-            "value": "473472712743b3bf2ea880d4d317f1bc3b372d2a71532367ed2107d7397e6972",
-            "expires": "2025-12-27T12:34:55.191Z",
-            "domain": "weblock.pandasecurity.com",
-            "path": "/",
-            "secure": true,
-            "httpOnly": true,
-            "hostOnly": false,
-            "creation": "2025-12-27T11:44:55.193Z",
-            "lastAccessed": "2025-12-27T11:44:55.193Z"
-          }
-        ]
+        "cookies": []
       },
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:34:51.889Z",
-      "createdAt": "2025-12-27T11:44:51.889Z",
+      "expiresAt": "2025-12-27T12:42:44.332Z",
+      "createdAt": "2025-12-27T11:52:44.332Z",
       "usageCount": 4,
       "maxUsageCount": 50,
       "errorScore": 6
     },
     {
-      "id": "session_HptYRp7Vnf",
+      "id": "session_lKHDtk0oBC",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -81,14 +56,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:35:07.237Z",
-      "createdAt": "2025-12-27T11:45:07.237Z",
+      "expiresAt": "2025-12-27T12:42:47.707Z",
+      "createdAt": "2025-12-27T11:52:47.707Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_ZhjnsT3q5z",
+      "id": "session_JBkKi0lgNz",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -101,14 +76,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:35:09.711Z",
-      "createdAt": "2025-12-27T11:45:09.711Z",
+      "expiresAt": "2025-12-27T12:42:50.344Z",
+      "createdAt": "2025-12-27T11:52:50.344Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_rAt2XTErqv",
+      "id": "session_XXPMayBomH",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -121,14 +96,14 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:35:11.467Z",
-      "createdAt": "2025-12-27T11:45:11.467Z",
+      "expiresAt": "2025-12-27T12:42:51.972Z",
+      "createdAt": "2025-12-27T11:52:51.972Z",
       "usageCount": 0,
       "maxUsageCount": 50,
       "errorScore": 0
     },
     {
-      "id": "session_gRoe7mfEHU",
+      "id": "session_B9fgaY71yR",
       "cookieJar": {
         "version": "tough-cookie@6.0.0",
         "storeType": "MemoryCookieStore",
@@ -141,8 +116,8 @@
       "userData": {},
       "maxErrorScore": 3,
       "errorScoreDecrement": 0.5,
-      "expiresAt": "2025-12-27T12:35:11.470Z",
-      "createdAt": "2025-12-27T11:45:11.470Z",
+      "expiresAt": "2025-12-27T12:42:51.974Z",
+      "createdAt": "2025-12-27T11:52:51.974Z",
       "usageCount": 1,
       "maxUsageCount": 50,
       "errorScore": 1

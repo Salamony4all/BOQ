@@ -452,8 +452,13 @@ app.post('/api/scrape-brand', async (req, res) => {
     const budgetTier = req.body.budgetTier || 'mid';
 
     // Check cloud scrapers: prefer ScrapingBee (has anti-bot), then Browserless
-    const useScrapingBee = isVercel && scrapingBeeScraper.isConfigured();
-    const useBrowserless = isVercel && !useScrapingBee && browserlessScraper.isConfigured();
+    // Allow using ScrapingBee locally if configured (good for tough sites like Amara)
+    // BUT: Architonic often blocks clouds, so prefer local for Architonic if running locally
+    const isArchitonic = url.includes('architonic.com');
+    const localPreferScrapingBee = !isArchitonic && scrapingBeeScraper.isConfigured();
+
+    const useScrapingBee = (isVercel || localPreferScrapingBee) && scrapingBeeScraper.isConfigured();
+    const useBrowserless = (isVercel || (!useScrapingBee && browserlessScraper.isConfigured())) && browserlessScraper.isConfigured();
 
     if (isVercel && !useScrapingBee && !useBrowserless) {
       return res.status(503).json({

@@ -2,17 +2,17 @@
   "requestsFinished": 0,
   "requestsFailed": 1,
   "requestsRetries": 1,
-  "requestsFailedPerMinute": 2,
+  "requestsFailedPerMinute": 4,
   "requestsFinishedPerMinute": 0,
   "requestMinDurationMillis": null,
   "requestMaxDurationMillis": 0,
-  "requestTotalFailedDurationMillis": 2512,
+  "requestTotalFailedDurationMillis": 1969,
   "requestTotalFinishedDurationMillis": 0,
-  "crawlerStartedAt": "2025-12-27T11:44:48.775Z",
-  "crawlerFinishedAt": "2025-12-27T11:45:16.531Z",
-  "statsPersistedAt": "2025-12-27T11:45:16.531Z",
-  "crawlerRuntimeMillis": 28154,
-  "crawlerLastStartTimestamp": 1766835888377,
+  "crawlerStartedAt": "2025-12-27T11:52:39.814Z",
+  "crawlerFinishedAt": "2025-12-27T11:52:54.241Z",
+  "statsPersistedAt": "2025-12-27T11:52:54.241Z",
+  "crawlerRuntimeMillis": 14887,
+  "crawlerLastStartTimestamp": 1766836359354,
   "requestRetryHistogram": [
     null,
     null,
@@ -20,18 +20,16 @@
     1
   ],
   "statsId": 0,
-  "requestAvgFailedDurationMillis": 2512,
+  "requestAvgFailedDurationMillis": 1969,
   "requestAvgFinishedDurationMillis": null,
-  "requestTotalDurationMillis": 2512,
+  "requestTotalDurationMillis": 1969,
   "requestsTotal": 1,
-  "requestsWithStatusCode": {
-    "200": 1
-  },
+  "requestsWithStatusCode": {},
   "errors": {
     "C:\\Users\\Mohamad60025\\Desktop\\App\\BOQ\\node_modules\\@crawlee\\playwright\\internals\\utils\\playwright-utils.js:166:17": {
       "missing error code": {
         "Error": {
-          "page.goto: net::ERR_CONNECTION_CLOSED at http://www.amara-art.com/": {
+          "page.goto: net::ERR_CONNECTION_CLOSED at https://amara-art.com/products/": {
             "count": 1
           }
         }
@@ -39,20 +37,11 @@
     }
   },
   "retryErrors": {
-    "C:\\Users\\Mohamad60025\\Desktop\\App\\BOQ\\server\\structureScraper.js:269:27": {
-      "missing error code": {
-        "Error": {
-          "page.evaluate: Execution context was destroyed, most likely because of a navigation": {
-            "count": 1
-          }
-        }
-      }
-    },
     "C:\\Users\\Mohamad60025\\Desktop\\App\\BOQ\\node_modules\\@crawlee\\playwright\\internals\\utils\\playwright-utils.js:166:17": {
       "missing error code": {
         "Error": {
-          "page.goto: net::ERR_CONNECTION_CLOSED at http://www.amara-art.com/": {
-            "count": 2
+          "page.goto: net::ERR_CONNECTION_CLOSED at https://amara-art.com/products/": {
+            "count": 3
           }
         }
       }

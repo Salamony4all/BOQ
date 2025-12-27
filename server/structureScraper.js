@@ -199,9 +199,11 @@ class StructureScraper {
 
             allLinks.forEach(a => {
                 const text = a.innerText.trim();
-                const match = text.match(/^([a-zA-Z\s]+)\s*\((\d+)\)$/);
+                // Match "Anything (Number)" - non-greedy match for name
+                const match = text.match(/^(.+?)\s*\((\d+)\)$/);
 
                 if (match) {
+                    const name = match[1].trim();
                     const href = a.getAttribute('href');
                     if (!href || href === '#' || href.startsWith('javascript')) return;
 
@@ -210,7 +212,7 @@ class StructureScraper {
                         if (!seenUrls.has(fullUrl)) {
                             seenUrls.add(fullUrl);
                             links.push({
-                                title: match[1].trim(),
+                                title: name,
                                 url: fullUrl
                             });
                         }
