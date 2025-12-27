@@ -24,7 +24,7 @@ class BrowserlessScraper {
     }
 
     /**
-     * Get browser connection - either local Puppeteer or Browserless cloud
+     * Get browser connection with timeout - either local Puppeteer or Browserless cloud
      */
     async getBrowser() {
         if (!this.browserlessEndpoint) {
@@ -32,11 +32,24 @@ class BrowserlessScraper {
         }
 
         console.log('🌐 Connecting to Browserless.io cloud browser...');
-        const browser = await puppeteer.connect({
+
+        // Add connection timeout (30 seconds)
+        const connectionPromise = puppeteer.connect({
             browserWSEndpoint: this.browserlessEndpoint
         });
-        console.log('✅ Connected to cloud browser');
-        return browser;
+
+        const timeoutPromise = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Browserless connection timeout after 30 seconds')), 30000)
+        );
+
+        try {
+            const browser = await Promise.race([connectionPromise, timeoutPromise]);
+            console.log('✅ Connected to cloud browser');
+            return browser;
+        } catch (error) {
+            console.error('❌ Browserless connection failed:', error.message);
+            throw new Error(`Failed to connect to Browserless: ${error.message}. Check your API key or try again.`);
+        }
     }
 
     /**
@@ -388,10 +401,23 @@ class BrowserlessScraper {
 
         } catch (error) {
             console.error('Browserless scrape error:', error.message);
-            throw error;
+
+            // If we have some products, return them even on partial failure
+            if (allProducts.length > 0) {
+                console.log(`⚠️ Partial scrape: returning ${allProducts.length} products despite error`);
+                if (onProgress) onProgress(90, `Partial result: ${allProducts.length} products (error: ${error.message})`);
+            } else {
+                // No products at all - throw the error
+                throw new Error(`Scraping failed: ${error.message}`);
+            }
         } finally {
             if (browser) {
-                await browser.close();
+                try {
+                    await browser.close();
+                    console.log('🔒 Browser closed');
+                } catch (closeError) {
+                    console.error('Error closing browser:', closeError.message);
+                }
             }
         }
 
