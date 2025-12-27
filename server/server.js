@@ -14,6 +14,7 @@ import axios from 'axios';
 import ScraperService from './scraper.js';
 import StructureScraper from './structureScraper.js';
 import BrowserlessScraper from './browserlessScraper.js';
+import ScrapingBeeScraper from './scrapingBeeScraper.js';
 import { ExcelDbManager } from './excelManager.js';
 import { brandStorage } from './storageProvider.js';
 
@@ -410,6 +411,7 @@ app.delete('/api/brands/:id', async (req, res) => {
 const scraperService = new ScraperService();
 const structureScraper = new StructureScraper();
 const browserlessScraper = new BrowserlessScraper();
+const scrapingBeeScraper = new ScrapingBeeScraper();
 const dbManager = new ExcelDbManager();
 
 // --- Task Manager for Background Scraping ---
@@ -449,13 +451,14 @@ app.post('/api/scrape-brand', async (req, res) => {
     const origin = req.body.origin || 'UNKNOWN';
     const budgetTier = req.body.budgetTier || 'mid';
 
-    // Check if Browserless is available for cloud scraping
-    const useBrowserless = isVercel && browserlessScraper.isConfigured();
+    // Check cloud scrapers: prefer ScrapingBee (has anti-bot), then Browserless
+    const useScrapingBee = isVercel && scrapingBeeScraper.isConfigured();
+    const useBrowserless = isVercel && !useScrapingBee && browserlessScraper.isConfigured();
 
-    if (isVercel && !useBrowserless) {
+    if (isVercel && !useScrapingBee && !useBrowserless) {
       return res.status(503).json({
         error: 'Scraping Unavailable - API Key Missing',
-        details: 'Cloud scraping requires BROWSERLESS_API_KEY to be configured. Please add it to your Vercel environment variables, or run the scraper locally.',
+        details: 'Cloud scraping requires SCRAPINGBEE_API_KEY or BROWSERLESS_API_KEY. Please add one to your Vercel environment variables, or run locally.',
         isVercelLimitation: true
       });
     }
@@ -467,8 +470,20 @@ app.post('/api/scrape-brand', async (req, res) => {
     // Run in background
     (async () => {
       try {
-        // Use Browserless on Vercel, local scraper otherwise
-        const scraper = useBrowserless ? browserlessScraper : scraperService;
+        // Choose scraper: ScrapingBee (anti-bot) > Browserless > Local
+        let scraper, scraperName;
+        if (useScrapingBee) {
+          scraper = scrapingBeeScraper;
+          scraperName = 'ScrapingBee';
+        } else if (useBrowserless) {
+          scraper = browserlessScraper;
+          scraperName = 'Browserless';
+        } else {
+          scraper = scraperService;
+          scraperName = 'Local';
+        }
+
+        console.log(`🔄 Using ${scraperName} scraper for ${url}`);
         const result = await scraper.scrapeBrand(url);
         const products = result.products || [];
         const brandLogo = result.brandInfo?.logo || '';
