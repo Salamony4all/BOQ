@@ -163,7 +163,7 @@ class BrowserlessScraper {
                     });
             }, url);
 
-            const uniqueCollections = [...new Set(collectionLinks)].slice(0, 10); // Limit for free tier
+            const uniqueCollections = [...new Set(collectionLinks)].slice(0, 20); // Increased for better coverage
             console.log(`   Found ${uniqueCollections.length} collections to scrape`);
 
             // Also find direct product links on main page
@@ -173,7 +173,7 @@ class BrowserlessScraper {
                     .filter(href => href && href.includes('/p/') && href.includes('architonic.com'));
             });
 
-            const uniqueDirectProducts = [...new Set(directProducts)].slice(0, 50);
+            const uniqueDirectProducts = [...new Set(directProducts)].slice(0, 100); // Increased
             console.log(`   Found ${uniqueDirectProducts.length} direct product links`);
 
             // Scrape each collection
@@ -191,11 +191,17 @@ class BrowserlessScraper {
                     // Get collection name
                     let collectionName = await page.$eval('h1', el => el.innerText).catch(() => 'Collection');
 
-                    // Scroll to load more products
+                    // Scroll to load more products - increased iterations
                     await page.evaluate(async () => {
-                        for (let i = 0; i < 5; i++) {
+                        for (let i = 0; i < 15; i++) {
                             window.scrollBy(0, 1500);
-                            await new Promise(r => setTimeout(r, 800));
+                            await new Promise(r => setTimeout(r, 600));
+                            // Try to click Load More if visible
+                            const loadMore = Array.from(document.querySelectorAll('button, a')).find(el =>
+                                el.innerText.toLowerCase().includes('load more') ||
+                                el.innerText.toLowerCase().includes('show more')
+                            );
+                            if (loadMore) try { loadMore.click(); } catch (e) { }
                         }
                     });
 
@@ -206,7 +212,7 @@ class BrowserlessScraper {
                             .filter(href => href && /\/p\/[a-z0-9-]+\d+\/?/i.test(href));
                     });
 
-                    const uniqueProductLinks = [...new Set(productLinks)].slice(0, 30);
+                    const uniqueProductLinks = [...new Set(productLinks)].slice(0, 100); // Increased to 100
                     console.log(`   📦 ${collectionName}: ${uniqueProductLinks.length} products`);
 
                     // Scrape each product
@@ -218,28 +224,111 @@ class BrowserlessScraper {
                             const productData = await page.evaluate(() => {
                                 const name = document.querySelector('h1')?.innerText?.trim() || '';
 
-                                // Find product image
+                                // Find product image - IMPROVED to match original scraper
                                 let imageUrl = '';
-                                const imgs = Array.from(document.querySelectorAll('img'));
-                                const productImg = imgs.find(i =>
-                                    i.width > 200 &&
+                                const allImgs = Array.from(document.querySelectorAll('img'));
+
+                                // 1. Target the ACTIVE carousel image (opacity-100 class)
+                                const activeVariantImg = allImgs.find(i =>
+                                    (i.classList.contains('opacity-100') || i.classList.contains('active')) &&
                                     i.src.includes('architonic.com') &&
-                                    !i.src.includes('logo')
+                                    !i.src.includes('/family/')
                                 );
-                                if (productImg) imageUrl = productImg.src;
+                                if (activeVariantImg) imageUrl = activeVariantImg.src;
 
-                                // Get description
-                                const desc = document.querySelector('meta[name="description"]')?.content || name;
+                                // 2. Look for images with '/product/' in URL
+                                if (!imageUrl) {
+                                    const productImg = allImgs.find(i =>
+                                        i.src.includes('/product/') &&
+                                        (i.classList.contains('object-contain') || i.width > 200)
+                                    );
+                                    if (productImg) imageUrl = productImg.src;
+                                }
 
-                                return { name, imageUrl, description: desc };
+                                // 3. Fallback selectors
+                                if (!imageUrl) {
+                                    const selectors = [
+                                        '#product-page section img.opacity-100',
+                                        '.product-gallery__main-image img',
+                                        'img[itemprop="image"]',
+                                        '.product-image img',
+                                        'main img[src*="/product/"]'
+                                    ];
+                                    for (const sel of selectors) {
+                                        const el = document.querySelector(sel);
+                                        if (el && el.src && el.src.startsWith('http') && !el.src.includes('/family/')) {
+                                            imageUrl = el.src;
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                // 4. Last fallback
+                                if (!imageUrl) {
+                                    const anyImg = allImgs.find(i =>
+                                        i.width > 200 &&
+                                        i.src.startsWith('http') &&
+                                        i.src.includes('architonic.com') &&
+                                        !i.src.includes('logo')
+                                    );
+                                    if (anyImg) imageUrl = anyImg.src;
+                                }
+
+                                // Get description - IMPROVED: try multiple sources
+                                let description = '';
+
+                                // Try meta description first
+                                description = document.querySelector('meta[name="description"]')?.content || '';
+
+                                // If short, try to get from page content
+                                if (!description || description.length < 50) {
+                                    // Try attribute elements
+                                    const attrElements = Array.from(document.querySelectorAll('div[class*="Attribute"]'));
+                                    if (attrElements.length > 0) {
+                                        description = attrElements.map(el => el.innerText.trim()).join(' | ');
+                                    }
+                                }
+
+                                // Try other content selectors
+                                if (!description || description.length < 50) {
+                                    const contentSelectors = ['.product-description', '#description', '.details-content', '.font-book.leading-normal'];
+                                    for (const sel of contentSelectors) {
+                                        const el = document.querySelector(sel);
+                                        if (el && el.innerText.length > 30) {
+                                            description = el.innerText.trim();
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                // Try to get variant-specific category
+                                const subTitle = document.querySelector('h1 + div a span')?.innerText?.trim() || '';
+                                if (subTitle && !description.includes(subTitle)) {
+                                    description = `${subTitle}. ${description}`;
+                                }
+
+                                if (!description) description = name;
+
+                                return { name, imageUrl, description };
                             });
 
                             if (productData.name && productData.imageUrl) {
+                                // Add variant ID from URL (like original scraper)
+                                let variantModel = productData.name;
+                                try {
+                                    const urlParts = prodUrl.split('/').filter(Boolean);
+                                    const lastPart = urlParts[urlParts.length - 1];
+                                    const idMatch = lastPart.match(/-(\\d+)$/);
+                                    if (idMatch && idMatch[1]) {
+                                        variantModel = `${productData.name} #${idMatch[1]}`;
+                                    }
+                                } catch (e) { }
+
                                 allProducts.push({
                                     mainCategory: 'Furniture',
                                     subCategory: collectionName,
                                     family: brandName,
-                                    model: productData.name,
+                                    model: variantModel,
                                     description: productData.description,
                                     imageUrl: productData.imageUrl,
                                     productUrl: prodUrl,
@@ -248,7 +337,7 @@ class BrowserlessScraper {
 
                                 if (onProgress) {
                                     const prog = Math.min(90, progress + Math.round((allProducts.length / 50) * 20));
-                                    onProgress(prog, `[${allProducts.length}] ${productData.name}`);
+                                    onProgress(prog, `[${allProducts.length}] ${variantModel}`);
                                 }
                             }
                         } catch (prodError) {
