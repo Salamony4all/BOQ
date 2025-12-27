@@ -242,9 +242,20 @@ app.post('/api/cleanup', async (req, res) => {
 // Image proxy endpoint - fetches external images and returns base64
 app.get('/api/image-proxy', async (req, res) => {
   try {
-    const imageUrl = req.query.url;
+    let imageUrl = req.query.url;
     if (!imageUrl) {
       return res.status(400).json({ error: 'URL parameter required' });
+    }
+
+    // Attempt to decode URL if it looks like Base64 (doesn't start with http)
+    if (!imageUrl.startsWith('http')) {
+      try {
+        imageUrl = Buffer.from(imageUrl, 'base64').toString('utf-8');
+        if (!imageUrl.startsWith('http')) throw new Error('Invalid decoded URL');
+      } catch (e) {
+        // If decoding fails but content is just a string, it might be an issue.
+        // But we assume the client is sending proper data.
+      }
     }
 
     let buffer;
