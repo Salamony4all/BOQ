@@ -73,14 +73,58 @@ class StructureScraper {
                     onProgress(Math.min(90, 20 + (visitedUrls.size / 5)), `Harvesting ${category}...`);
                 }
 
-                // Wait for some content
-                await page.waitForLoadState('domcontentloaded');
-                await page.waitForTimeout(2000);
+                // Wait for network idle to ensure JS has executed (important for sites like Amara Art)
+                try {
+                    await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
+                } catch (e) { }
+
+                // Allow time for any fades/transitions
+                await page.waitForTimeout(3000);
 
                 if (!label || label === 'ROOT') {
+                    // Try to handle "enter site" or language selection screens
+                    await this.handleInterstitials(page);
+
                     // Find Main Categories
                     const categories = await this.discoverHierarchyLinks(page, baseUrl);
                     console.log(`   Found ${categories.length} main categories/links`);
+
+                    // If no categories found on homepage, try /products or /collections specially
+                    if (categories.length === 0) {
+                        console.log('   ⚠️ No categories on homepage. Checking /products...');
+                        const productsUrl = new URL('/products/', baseUrl).href;
+
+                        try {
+                            await page.goto(productsUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+                            await this.handleInterstitials(page);
+
+                            // Re-scan for categories on the products page
+                            const prodCategories = await this.discoverHierarchyLinks(page, baseUrl);
+                            if (prodCategories.length > 0) {
+                                console.log(`   Found ${prodCategories.length} categories on /products`);
+                                categories.push(...prodCategories);
+                            } else {
+                                // If still no categories, maybe the sidebar links are just filters? 
+                                // Let's try to grab the "Name (Count)" links specifically seen on Amara Art
+                                const sidebarCategories = await this.extractSidebarCategories(page, baseUrl);
+                                if (sidebarCategories.length > 0) {
+                                    console.log(`   Found ${sidebarCategories.length} sidebar categories`);
+                                    categories.push(...sidebarCategories);
+                                }
+                            }
+                        } catch (e) {
+                            console.log('   ⚠️ Could not load /products page');
+                        }
+                    }
+
+                    // Fallback: Direct homepage product extraction if still nothing
+                    if (categories.length === 0) {
+                        const directProducts = await this.extractProductsFromPage(page, brandName, 'General', 'Homepage');
+                        if (directProducts.length > 0) {
+                            products.push(...directProducts);
+                            console.log(`      ✓ Extracted ${directProducts.length} products from Homepage`);
+                        }
+                    }
 
                     for (const cat of categories) {
                         await crawler.addRequests([{
@@ -94,22 +138,11 @@ class StructureScraper {
                     products.push(...pageProducts);
                     console.log(`      ✓ Extracted ${pageProducts.length} products from ${category}`);
 
-                    // Look for more sub-links that might be subcategories
-                    const subLinks = await this.discoverHierarchyLinks(page, baseUrl);
-                    for (const sub of subLinks) {
-                        if (!visitedUrls.has(sub.url)) {
-                            // If it's deeper, likely a subcategory
-                            await crawler.addRequests([{
-                                url: sub.url,
-                                userData: { label: 'CATEGORY', category: category, subCategory: sub.title }
-                            }]);
-                        }
-                    }
-
-                    // Look for pagination
+                    // Look for pagination (Next > or numbers)
                     const pagination = await this.findPagination(page, baseUrl);
                     for (const pg of pagination) {
                         if (!visitedUrls.has(pg)) {
+                            // High priority to finish the category
                             await crawler.addRequests([{
                                 url: pg,
                                 userData: { label: 'CATEGORY', category, subCategory }
@@ -137,6 +170,55 @@ class StructureScraper {
                 logo: brandInfo.logo
             }
         };
+    }
+
+    async handleInterstitials(page) {
+        try {
+            // Click "Enter Site", "English", "Close", etc.
+            await page.evaluate(() => {
+                const keywords = ['enter', 'english', 'en', 'welcome', 'accept', 'agree', 'close', 'x', 'start'];
+                const buttons = Array.from(document.querySelectorAll('button, a, div[role="button"]'));
+                const target = buttons.find(b => {
+                    const text = b.innerText?.toLowerCase() || '';
+                    // Must be short text to avoid clicking random paragraphs
+                    return keywords.some(k => text.includes(k)) && text.length < 20 && b.offsetParent !== null;
+                });
+                if (target) target.click();
+            });
+            await page.waitForTimeout(2000);
+        } catch (e) { }
+    }
+
+    async extractSidebarCategories(page, baseUrl) {
+        return await page.evaluate(({ baseUrl }) => {
+            const links = [];
+            const seenUrls = new Set();
+
+            // Look for links that contain parentheses with numbers, e.g. "Chairs (12)"
+            const allLinks = document.querySelectorAll('a');
+
+            allLinks.forEach(a => {
+                const text = a.innerText.trim();
+                const match = text.match(/^([a-zA-Z\s]+)\s*\((\d+)\)$/);
+
+                if (match) {
+                    const href = a.getAttribute('href');
+                    if (!href || href === '#' || href.startsWith('javascript')) return;
+
+                    try {
+                        const fullUrl = new URL(href, baseUrl).href;
+                        if (!seenUrls.has(fullUrl)) {
+                            seenUrls.add(fullUrl);
+                            links.push({
+                                title: match[1].trim(),
+                                url: fullUrl
+                            });
+                        }
+                    } catch (e) { }
+                }
+            });
+            return links;
+        }, { baseUrl });
     }
 
     async discoverHierarchyLinks(page, baseUrl) {
