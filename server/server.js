@@ -13,6 +13,7 @@ import { handleUpload } from '@vercel/blob/client';
 import axios from 'axios';
 import ScraperService from './scraper.js';
 import StructureScraper from './structureScraper.js';
+import BrowserlessScraper from './browserlessScraper.js';
 import { ExcelDbManager } from './excelManager.js';
 import { brandStorage } from './storageProvider.js';
 
@@ -408,6 +409,7 @@ app.delete('/api/brands/:id', async (req, res) => {
 
 const scraperService = new ScraperService();
 const structureScraper = new StructureScraper();
+const browserlessScraper = new BrowserlessScraper();
 const dbManager = new ExcelDbManager();
 
 // --- Task Manager for Background Scraping ---
@@ -433,15 +435,6 @@ app.delete('/api/tasks/:id', (req, res) => {
 
 // --- Scraping Endpoint ---
 app.post('/api/scrape-brand', async (req, res) => {
-  // Immediate check: Scraping not available on Vercel serverless
-  if (isVercel) {
-    return res.status(503).json({
-      error: 'Scraping Unavailable on Cloud',
-      details: 'Web scraping requires a browser (Chromium) which cannot run on Vercel serverless functions. Please run the scraper locally using "npm run dev" and sync brands to the cloud.',
-      isVercelLimitation: true
-    });
-  }
-
   try {
     const { url } = req.body;
 
@@ -456,6 +449,17 @@ app.post('/api/scrape-brand', async (req, res) => {
     const origin = req.body.origin || 'UNKNOWN';
     const budgetTier = req.body.budgetTier || 'mid';
 
+    // Check if Browserless is available for cloud scraping
+    const useBrowserless = isVercel && browserlessScraper.isConfigured();
+
+    if (isVercel && !useBrowserless) {
+      return res.status(503).json({
+        error: 'Scraping Unavailable - API Key Missing',
+        details: 'Cloud scraping requires BROWSERLESS_API_KEY to be configured. Please add it to your Vercel environment variables, or run the scraper locally.',
+        isVercelLimitation: true
+      });
+    }
+
     // Start scraping in background
     const taskId = `scrape_${Date.now()}`;
     tasks.set(taskId, { id: taskId, status: 'processing', progress: 10, stage: 'Starting harvest...', brandName: name });
@@ -463,7 +467,9 @@ app.post('/api/scrape-brand', async (req, res) => {
     // Run in background
     (async () => {
       try {
-        const result = await scraperService.scrapeBrand(url);
+        // Use Browserless on Vercel, local scraper otherwise
+        const scraper = useBrowserless ? browserlessScraper : scraperService;
+        const result = await scraper.scrapeBrand(url);
         const products = result.products || [];
         const brandLogo = result.brandInfo?.logo || '';
 
@@ -490,7 +496,7 @@ app.post('/api/scrape-brand', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Scraping started in background.',
+      message: useBrowserless ? 'Cloud scraping started (Browserless).' : 'Scraping started in background.',
       taskId: taskId
     });
 
@@ -502,20 +508,22 @@ app.post('/api/scrape-brand', async (req, res) => {
 
 // --- AI-Powered Scraping Endpoint (Universal) ---
 app.post('/api/scrape-ai', async (req, res) => {
-  // Immediate check: Scraping not available on Vercel serverless
-  if (isVercel) {
-    return res.status(503).json({
-      error: 'Scraping Unavailable on Cloud',
-      details: 'Web scraping requires a browser (Chromium) which cannot run on Vercel serverless functions. Please run the scraper locally using "npm run dev" and sync brands to the cloud.',
-      isVercelLimitation: true
-    });
-  }
-
   try {
     const { url, name, budgetTier = 'mid', origin = 'UNKNOWN', maxProducts = 10000 } = req.body;
 
     if (!url) {
       return res.status(400).json({ error: 'URL is required' });
+    }
+
+    // Check if Browserless is available for cloud scraping
+    const useBrowserless = isVercel && browserlessScraper.isConfigured();
+
+    if (isVercel && !useBrowserless) {
+      return res.status(503).json({
+        error: 'Scraping Unavailable - API Key Missing',
+        details: 'Cloud scraping requires BROWSERLESS_API_KEY to be configured. Please add it to your Vercel environment variables, or run the scraper locally.',
+        isVercelLimitation: true
+      });
     }
 
     // Start background task
@@ -527,35 +535,31 @@ app.post('/api/scrape-ai', async (req, res) => {
     (async () => {
       try {
         let result;
-        if (url.includes('architonic.com')) {
-          // Use specialized Architonic scraper
+
+        // Progress callback
+        const progressCallback = (progress, stage, detectedName = null) => {
+          const currentTask = tasks.get(taskId);
+          if (!currentTask) return;
+          tasks.set(taskId, {
+            ...currentTask,
+            progress,
+            stage,
+            brandName: detectedName || currentTask.brandName
+          });
+        };
+        progressCallback.isCancelled = () => tasks.get(taskId)?.status === 'cancelled';
+
+        if (useBrowserless) {
+          // Use Browserless cloud scraper on Vercel
+          tasks.set(taskId, { ...tasks.get(taskId), stage: 'Using cloud browser (Browserless)...' });
+          result = await browserlessScraper.scrapeBrand(url, progressCallback);
+        } else if (url.includes('architonic.com')) {
+          // Use specialized Architonic scraper locally
           tasks.set(taskId, { ...tasks.get(taskId), stage: 'Crawling Architonic Collection...' });
-          const progressCallback = (progress, stage, detectedName = null) => {
-            const currentTask = tasks.get(taskId);
-            if (!currentTask) return;
-            tasks.set(taskId, {
-              ...currentTask,
-              progress,
-              stage,
-              brandName: detectedName || currentTask.brandName
-            });
-          };
-          progressCallback.isCancelled = () => tasks.get(taskId)?.status === 'cancelled';
           result = await scraperService.scrapeBrand(url, progressCallback);
           tasks.set(taskId, { ...tasks.get(taskId), progress: 80, stage: 'Finalizing Architonic data...' });
         } else {
-          // Use Universal Structure Scraper
-          const progressCallback = (progress, stage, detectedName = null) => {
-            const currentTask = tasks.get(taskId);
-            if (!currentTask) return;
-            tasks.set(taskId, {
-              ...currentTask,
-              progress,
-              stage,
-              brandName: detectedName || currentTask.brandName
-            });
-          };
-          progressCallback.isCancelled = () => tasks.get(taskId)?.status === 'cancelled';
+          // Use Universal Structure Scraper locally
           result = await structureScraper.scrapeBrand(url, name, progressCallback);
         }
 
@@ -573,7 +577,7 @@ app.post('/api/scrape-ai', async (req, res) => {
           logo: brandLogo,
           products,
           createdAt: new Date(),
-          scrapedWith: url.includes('architonic.com') ? 'Architonic-Specialized' : 'Structure-Harvest'
+          scrapedWith: useBrowserless ? 'Browserless-Cloud' : (url.includes('architonic.com') ? 'Architonic-Specialized' : 'Structure-Harvest')
         };
 
         await brandStorage.saveBrand(newBrand);
@@ -593,7 +597,7 @@ app.post('/api/scrape-ai', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Background hierarchical harvest started.',
+      message: useBrowserless ? 'Cloud scraping started (Browserless).' : 'Background hierarchical harvest started.',
       taskId
     });
 
