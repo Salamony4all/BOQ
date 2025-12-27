@@ -17,6 +17,11 @@ class ScrapingBeeScraper {
      * Check if ScrapingBee is configured
      */
     isConfigured() {
+        // Double check process.env in case it loaded late
+        if (!this.apiKey && process.env.SCRAPINGBEE_API_KEY) {
+            this.apiKey = process.env.SCRAPINGBEE_API_KEY;
+            this.client = new ScrapingBeeClient(this.apiKey);
+        }
         return !!this.apiKey;
     }
 
@@ -346,43 +351,155 @@ class ScrapingBeeScraper {
 
         try {
             if (onProgress) onProgress(15, 'Fetching page...');
-            const html = await this.fetchPage(url, { params: { wait: 3000 } });
+
+            // Use JS rendering for general sites (better for SPAs/lazy load)
+            const html = await this.fetchPage(url, { params: { wait: 5000, render_js: 'true' } });
 
             if (onProgress) onProgress(30, 'Extracting brand info...');
             const brandInfo = this.extractBrandInfo(html, url);
             if (onProgress) onProgress(40, `Found: ${brandInfo.name}`, brandInfo.name);
 
             if (onProgress) onProgress(50, 'Extracting products...');
+
+            // Helper to extract products from a given HTML
+            const extractFromHtml = (htmlSource, categoryName = 'General') => {
+                const $ = cheerio.load(htmlSource);
+                const found = [];
+                const selectors = ['.product', '.product-item', '.product-card', '[class*="product"]', 'li.item', 'div.item']; // Added more generic selectors
+
+                for (const selector of selectors) {
+                    $(selector).each((i, el) => {
+                        const $el = $(el);
+                        // Try various title/name selectors
+                        let title = $el.find('h2, h3, h4, h5, .title, .name, .product-name').first().text().trim();
+                        // Special for Amara: checks for generic text if heading missing
+                        if (!title) title = $el.find('a').first().text().trim();
+
+                        // Image extraction
+                        let imgSrc = $el.find('img').first().attr('src') || $el.find('img').first().attr('data-src');
+                        let link = $el.find('a[href]').first().attr('href');
+
+                        // Clean up relative URLs
+                        if (imgSrc && !imgSrc.startsWith('http')) imgSrc = new URL(imgSrc, baseUrl).href;
+                        if (link && !link.startsWith('http') && link) link = new URL(link, baseUrl).href;
+
+                        if (title && title.length > 2 && imgSrc && !imgSrc.includes('logo')) {
+                            found.push({
+                                mainCategory: 'Products',
+                                subCategory: categoryName,
+                                family: brandInfo.name,
+                                model: title,
+                                description: title,
+                                imageUrl: imgSrc,
+                                productUrl: link || url,
+                                price: 0
+                            });
+                        }
+                    });
+                    if (found.length > 0) break;
+                }
+                return found;
+            };
+            // 1. Try generic extraction on main page
+            const mainPageProducts = extractFromHtml(html);
+            allProducts.push(...mainPageProducts);
+
+            // 2. Always look for Categories (Amara Art style) to ensure full coverage
+            // The main page oftentimes only shows a subset.
+            console.log(`   Main page yielded ${mainPageProducts.length} products. Scanning for comprehensive categories...`);
+            if (onProgress) onProgress(60, 'Scanning for categories...');
+
             const $ = cheerio.load(html);
+            const categoryLinks = [];
 
-            // Generic product extraction
-            const selectors = ['.product', '.product-item', '.product-card', '[class*="product"]'];
+            // Amara Art / regex style sidebar detection
+            console.log('   --- Scanning all links for categories ---');
+            $('a').each((i, el) => {
+                const $el = $(el);
+                const href = $el.attr('href');
+                if (!href || href.includes('javascript') || href === '#') return;
 
-            for (const selector of selectors) {
-                $(selector).each((i, el) => {
-                    const $el = $(el);
-                    const title = $el.find('h2, h3, h4, .title, .name').first().text().trim();
-                    const imgSrc = $el.find('img').first().attr('src') || $el.find('img').first().attr('data-src');
-                    const link = $el.find('a[href]').first().attr('href');
+                const fullUrl = href.startsWith('http') ? href : new URL(href, baseUrl).href;
+                if (fullUrl === url || categoryLinks.some(c => c.url === fullUrl)) return;
 
-                    if (title && title.length > 2 && imgSrc && !imgSrc.includes('logo')) {
-                        allProducts.push({
-                            mainCategory: 'Products',
-                            subCategory: 'General',
-                            family: brandInfo.name,
-                            model: title,
-                            description: title,
-                            imageUrl: imgSrc.startsWith('http') ? imgSrc : new URL(imgSrc, baseUrl).href,
-                            productUrl: link ? (link.startsWith('http') ? link : new URL(link, baseUrl).href) : url,
-                            price: 0
-                        });
+                // Strategy 1: Check Anchor Text
+                let text = $el.text().replace(/\s+/g, ' ').trim();
+                let match = text.match(/^(.+?)\s*\(\s*(\d+)\s*\)$/);
+
+                // Strategy 2: Check Parent Text (if count is sibling)
+                if (!match) {
+                    const parentText = $el.parent().text().replace(/\s+/g, ' ').trim();
+                    match = parentText.match(/^(.+?)\s*\(\s*(\d+)\s*\)$/);
+                }
+
+                // Strategy 3: URL Pattern Fallback (Amara uses /product-category/)
+                const isAmaraCategory = fullUrl.includes('/product-category/');
+
+                if (match) {
+                    const name = match[1].trim();
+                    const count = match[2];
+                    console.log(`      ✅ MATCHED CATEGORY (Regex): "${name}" (${count} items)`);
+                    categoryLinks.push({ url: fullUrl, name: name });
+                } else if (isAmaraCategory) {
+                    // Extract name from URL if possible
+                    const nameFromUrl = fullUrl.split('/').filter(x => x).pop().replace(/-/g, ' ').toUpperCase();
+                    console.log(`      ✅ MATCHED CATEGORY (URL): "${nameFromUrl}"`);
+                    categoryLinks.push({ url: fullUrl, name: nameFromUrl });
+                }
+            });
+
+            if (categoryLinks.length > 0) {
+                console.log(`   Found ${categoryLinks.length} categories. Starting deep scan...`);
+
+                // Fetch each category
+                for (let i = 0; i < categoryLinks.length; i++) {
+                    const cat = categoryLinks[i];
+                    if (onProgress) onProgress(60 + Math.round((i / categoryLinks.length) * 30), `Scraping category: ${cat.name}...`);
+
+                    try {
+                        let currentUrl = cat.url;
+                        let pageNum = 1;
+                        let hasNextPage = true;
+
+                        while (hasNextPage && pageNum <= 5) { // Limit to 5 pages per category to save credits/time
+                            console.log(`      Fetching ${cat.name} Page ${pageNum}...`);
+
+                            // Check if configured
+                            if (!this.isConfigured()) {
+                                if (process.env.SCRAPINGBEE_API_KEY) this.client = new ScrapingBeeClient(process.env.SCRAPINGBEE_API_KEY);
+                            }
+
+                            const catHtml = await this.fetchPage(currentUrl, { params: { wait: 3000, render_js: 'true' } });
+                            const catProducts = extractFromHtml(catHtml, cat.name);
+
+                            if (catProducts.length === 0) {
+                                break;
+                            }
+
+                            console.log(`      Found ${catProducts.length} products in ${cat.name} (Page ${pageNum})`);
+                            allProducts.push(...catProducts);
+
+                            // Detect Next Page
+                            const $cat = cheerio.load(catHtml);
+                            const nextLink = $cat('a.next, a.next-page, a[rel="next"], .pagination a:last-child').first().attr('href');
+
+                            if (nextLink && pageNum < 5) {
+                                currentUrl = nextLink.startsWith('http') ? nextLink : new URL(nextLink, baseUrl).href;
+                                pageNum++;
+                                // Small delay between pages
+                                await new Promise(r => setTimeout(r, 1000));
+                            } else {
+                                hasNextPage = false;
+                            }
+                        }
+
+                    } catch (e) {
+                        console.error(`      Failed to scrape ${cat.name}: ${e.message}`);
                     }
-                });
-
-                if (allProducts.length > 0) break;
+                }
             }
 
-            if (onProgress) onProgress(80, `Found ${allProducts.length} products`);
+            if (onProgress) onProgress(90, `Found total ${allProducts.length} products`);
 
         } catch (error) {
             console.error('ScrapingBee universal error:', error.message);
@@ -394,7 +511,7 @@ class ScrapingBeeScraper {
 
         return {
             products: allProducts,
-            brandInfo: this.extractBrandInfo('<html></html>', url) // Basic fallback
+            brandInfo: this.extractBrandInfo(allProducts.length ? '<html></html>' : '<html></html>', url) // Fallback
         };
     }
 
