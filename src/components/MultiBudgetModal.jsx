@@ -1361,6 +1361,9 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         if (!tier || !tier.rows.length) return alert('No data to export');
 
         const doc = new jsPDF();
+        const arabicLoaded = await loadArabicFont(doc);
+        const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
+
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const isBoqMode = tier.mode === 'boq';
@@ -1475,8 +1478,6 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 try {
                     const brandLogoImg = await getImageData(row.brandLogo);
                     if (brandLogoImg) {
-                        const arabicLoaded = await loadArabicFont(doc);
-                        const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
 
                         const fit = calcFitSize(brandLogoImg.width, brandLogoImg.height, 30, 8);
                         const logoX = imgContainerX + (imgContainerW - fit.w) / 2;
@@ -1610,7 +1611,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                     <tr>
                         <th style={{ width: '50px' }}>Sl</th>
                         {isBoqMode && <th style={{ width: '80px' }}>Ref Img</th>}
-                        {isBoqMode && <th style={{ minWidth: '200px' }}>Original Desc</th>}
+                        {isBoqMode && <th style={{ width: '200px' }}>Original Desc</th>}
                         <th style={{ width: '80px' }}>Brand Img</th>
                         <th style={{ width: '200px' }}>Brand Desc</th>
                         <th style={{ width: '50px' }}>Qty</th>
