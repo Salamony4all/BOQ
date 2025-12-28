@@ -23,9 +23,11 @@
 }
 
 .modalContent {
-    background: rgba(30, 41, 59, 0.95);
+    background: var(--bg-primary);
+    /* Use theme var */
     backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
+    /* Use theme var */
     border-radius: 24px;
     padding: 3rem 4rem;
     text-align: center;
@@ -68,7 +70,8 @@
 .stage {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #f8fafc;
+    color: var(--text-primary);
+    /* Use theme var */
     margin-bottom: 1.5rem;
     min-height: 2rem;
 }
@@ -76,7 +79,8 @@
 .progressBar {
     width: 100%;
     height: 12px;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--bg-tertiary);
+    /* Use theme var */
     border-radius: 12px;
     overflow: hidden;
     margin-bottom: 1rem;

@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { upload as blobUpload } from '@vercel/blob/client';
 import FileUpload from './components/FileUpload';
@@ -8,6 +9,7 @@ import CompanySettings from './components/CompanySettings';
 import { ScrapingProvider } from './context/ScrapingContext';
 import { CompanyProvider, useCompanyProfile } from './context/CompanyContext';
 import styles from './styles/App.module.css';
+import { useTheme } from './context/ThemeContext';
 
 // Modern workspace images for carousel
 const CAROUSEL_IMAGES = [
@@ -19,6 +21,35 @@ const CAROUSEL_IMAGES = [
 ];
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
+
+// Theme Toggle Component
+const ThemeToggle = () => {
+  const { theme, toggleTheme } = useTheme();
+  return (
+    <button
+      onClick={toggleTheme}
+      style={{
+        background: 'rgba(255, 255, 255, 0.1)',
+        border: '1px solid rgba(255, 255, 255, 0.2)',
+        borderRadius: '50%',
+        width: '40px',
+        height: '40px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        color: theme === 'dark' ? '#fbbf24' : '#f59e0b',
+        fontSize: '1.2rem',
+        zIndex: 100,
+        backdropFilter: 'blur(5px)',
+        transition: 'all 0.2s'
+      }}
+      title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+    >
+      {theme === 'dark' ? '☀' : '☾'}
+    </button>
+  );
+};
 
 function AppContent({ onOpenSettings }) {
   const { logoWhite, companyName } = useCompanyProfile();
@@ -180,6 +211,9 @@ function AppContent({ onOpenSettings }) {
                   <span className={styles.logoTextSmall}>{companyName || 'BOQFLOW'}</span>
                 )}
               </div>
+              <div style={{ marginLeft: 'auto', marginRight: '1rem' }}>
+                <ThemeToggle />
+              </div>
             </header>
 
             {!extractedData && (
@@ -236,6 +270,11 @@ function AppContent({ onOpenSettings }) {
           <span className={styles.hamburgerLine}></span>
           <span className={styles.hamburgerLine}></span>
         </button>
+
+        {/* Theme Toggle - Fixed Top Right */}
+        <div style={{ position: 'fixed', top: '20px', right: '20px', zIndex: 100 }}>
+          <ThemeToggle />
+        </div>
 
         {/* Hero Section */}
         <section className={styles.hero}>
@@ -358,7 +397,7 @@ function AppContent({ onOpenSettings }) {
         <MultiBudgetModal
           isOpen={isMultiBudgetOpen}
           onClose={() => setMultiBudgetOpen(false)}
-          originalTables={null}
+          originalTables={extractedData?.tables || null}
         />
 
         <ProgressModal
@@ -409,4 +448,3 @@ function App() {
 }
 
 export default App;
-

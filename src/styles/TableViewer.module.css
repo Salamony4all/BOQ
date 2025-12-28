@@ -7,16 +7,17 @@
     margin-bottom: 2rem;
 }
 
+/* ... */
 .title {
     font-size: 2rem;
     font-weight: 600;
-    color: #f8fafc;
+    color: var(--text-primary);
 }
 
 .tableCard {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-secondary);
     backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
     border-radius: 16px;
     padding: 1.5rem;
     margin-bottom: 2rem;
@@ -35,19 +36,19 @@
     align-items: center;
     margin-bottom: 1.5rem;
     padding-bottom: 1rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    border-bottom: 1px solid var(--border-color);
 }
 
 .sheetName {
     font-size: 1.25rem;
     font-weight: 600;
-    color: #f8fafc;
+    color: var(--text-primary);
 }
 
 .rowCount {
     font-size: 0.875rem;
-    color: #94a3b8;
-    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
     padding: 0.5rem 1rem;
     border-radius: 8px;
 }
@@ -64,37 +65,42 @@
 }
 
 .table tr {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid var(--border-color);
     transition: background-color 0.2s ease;
 }
 
 .table tr:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-tertiary);
 }
 
+/* ... */
 .headerRow {
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.2) 0%, rgba(118, 75, 162, 0.2) 100%) !important;
+    background: var(--bg-tertiary) !important;
+    /* Theme var */
     font-weight: 600;
 }
 
 .headerRow th {
-    color: #e0e7ff !important;
+    color: var(--text-primary) !important;
+    /* Theme var */
     text-transform: uppercase;
     letter-spacing: 0.05em;
     font-size: 0.85rem;
 }
 
 .summaryRow {
-    background: rgba(129, 251, 184, 0.1) !important;
+    background: var(--bg-tertiary) !important;
     font-weight: 600;
-    color: #81FBB8;
+    color: var(--success, #10b981) !important;
 }
 
 .cell {
     padding: 1rem;
     text-align: left;
     vertical-align: middle;
-    color: #cbd5e1;
+    color: var(--text-primary);
+    /* Use theme var for adaptability */
+    background: transparent;
 }
 
 .imageCell {
@@ -335,13 +341,16 @@
     margin-left: auto;
 }
 
+/* ... */
 .summaryDetailRow {
     display: flex;
     justify-content: space-between;
     font-size: 0.9rem;
-    color: #94a3b8;
+    color: var(--text-secondary);
+    /* Theme-aware color */
 }
 
+/* Ensure strong contrast for "Total" row in light mode */
 .summaryTotal {
     display: flex;
     justify-content: space-between;
@@ -354,5 +363,8 @@
 }
 
 .summaryTotal span:first-child {
-    color: #f1f5f9;
+    color: var(--text-primary);
+    /* Dark in light mode, Light in dark mode */
 }
+
+/* ... */

@@ -30,6 +30,8 @@
     "jspdf": "^3.0.4",
     "jspdf-autotable": "^5.0.2",
     "multer": "^2.0.2",
+    "pdf-parse": "^2.4.5",
+    "pdfjs-dist": "^5.4.449",
     "playwright": "^1.57.0",
     "pptxgenjs": "^4.0.1",
     "puppeteer": "^24.33.0",

@@ -14,10 +14,11 @@
     animation: fadeIn 0.3s ease;
 }
 
+/* ... */
 .modalContent {
-    background: #1e293b;
+    background: var(--bg-secondary);
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
     width: 100%;
     max-width: 500px;
     padding: 2rem;
@@ -33,9 +34,9 @@
 }
 
 .settingsContainer {
-    background: #1e293b;
+    background: var(--bg-secondary);
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
     padding: 2rem;
 }
 
@@ -56,7 +57,7 @@
 }
 
 .subtitle {
-    color: #94a3b8;
+    color: var(--text-secondary);
     font-size: 0.95rem;
 }
 
@@ -74,7 +75,7 @@
 }
 
 .label {
-    color: #e2e8f0;
+    color: var(--text-primary);
     font-weight: 600;
     font-size: 0.9rem;
     display: flex;
@@ -83,17 +84,17 @@
 }
 
 .hint {
-    color: #64748b;
+    color: var(--text-secondary);
     font-weight: 400;
     font-size: 0.75rem;
 }
 
 .input {
-    background: #0f172a;
-    border: 1px solid #334155;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 0.8rem 1rem;
-    color: #f8fafc;
+    color: var(--text-primary);
     font-size: 1rem;
     transition: border-color 0.2s ease;
 }
@@ -104,7 +105,7 @@
 }
 
 .input::placeholder {
-    color: #64748b;
+    color: var(--text-secondary);
 }
 
 /* Logo Section */
@@ -117,8 +118,8 @@
 .logoPreview {
     width: 100px;
     height: 100px;
-    background: #0f172a;
-    border: 2px dashed #334155;
+    background: var(--bg-tertiary);
+    border: 2px dashed var(--border-color);
     border-radius: 12px;
     display: flex;
     align-items: center;

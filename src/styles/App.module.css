@@ -213,13 +213,15 @@
 }
 
 /* Hamburger Menu Button */
+/* Hamburger Menu Button */
 .hamburgerFixed {
   position: fixed;
   top: 1.5rem;
   left: 1.5rem;
   z-index: 100;
-  background: rgba(30, 41, 59, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--bg-secondary);
+  /* Theme var */
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 0.75rem;
   cursor: pointer;
@@ -228,16 +230,18 @@
   gap: 5px;
   transition: all 0.2s ease;
   backdrop-filter: blur(8px);
+  box-shadow: var(--card-shadow);
 }
 
 .hamburgerFixed:hover {
-  background: rgba(59, 130, 246, 0.3);
+  background: var(--bg-tertiary);
   border-color: var(--primary);
 }
 
 .hamburgerBtn {
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: var(--bg-tertiary);
+  /* Theme var */
+  border: 1px solid var(--border-color);
   border-radius: 6px;
   padding: 0.6rem;
   cursor: pointer;
@@ -249,7 +253,7 @@
 }
 
 .hamburgerBtn:hover {
-  background: rgba(59, 130, 246, 0.2);
+  background: var(--bg-secondary);
   border-color: var(--primary);
 }
 
@@ -257,7 +261,8 @@
   display: block;
   width: 20px;
   height: 2px;
-  background: #e2e8f0;
+  background: var(--text-primary);
+  /* Theme var */
   border-radius: 1px;
   transition: all 0.2s ease;
 }
@@ -521,6 +526,7 @@
   letter-spacing: 2px;
 }
 
+/* ... */
 .homeCardGrid {
   display: flex;
   flex-direction: column;
@@ -530,16 +536,13 @@
   width: 100%;
 }
 
-.cardWrapper {
-  width: 550px;
-  height: 260px;
-  max-width: 95vw;
-}
-
+/* ... */
 .newBoqCard {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--bg-card);
+  /* Use variable */
   backdrop-filter: blur(10px);
-  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border: 2px dashed rgba(148, 163, 184, 0.4);
+  /* Visible border default */
   border-radius: 14px;
   padding: 2rem;
   text-align: center;
@@ -560,21 +563,27 @@
   border-color: var(--success);
   transform: translateY(-2px);
   box-shadow: 0 10px 40px rgba(16, 185, 129, 0.2);
+  background: var(--bg-secondary);
 }
 
-.newBoqCard::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(5, 150, 105, 0.1) 100%);
-  opacity: 0;
-  transition: opacity 0.3s ease;
+.cardWrapper {
+  width: 550px;
+  height: 260px;
+  max-width: 95vw;
+  border: 2px dashed rgba(148, 163, 184, 0.4);
+  /* Subtle visible border */
+  border-radius: 14px;
+  transition: all 0.3s ease;
 }
 
-.newBoqCard:hover::before {
-  opacity: 1;
+.cardWrapper:hover {
+  border-color: var(--primary);
+  box-shadow: 0 10px 40px rgba(59, 130, 246, 0.2);
 }
 
+/* ... */
+
+/* ... */
 .cardTitle {
   font-size: 1.6rem;
   font-weight: 700;

@@ -17,7 +17,8 @@ class ExcelDbManager {
             { header: 'Model', key: 'model', width: 25 },
             { header: 'Description', key: 'description', width: 40 },
             { header: 'Image URL', key: 'imageUrl', width: 30 },
-            { header: 'Price', key: 'price', width: 15 }
+            { header: 'Price', key: 'price', width: 15 },
+            { header: 'Product URL', key: 'productUrl', width: 30 }
         ];
 
         if (brandData.products) {
@@ -43,7 +44,8 @@ class ExcelDbManager {
                     model: vals[4] || '',
                     description: vals[5] || '',
                     imageUrl: vals[6] || '',
-                    price: vals[7] || 0
+                    price: vals[7] || 0,
+                    productUrl: vals[8] || ''
                 });
             }
         });

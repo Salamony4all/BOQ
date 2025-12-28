@@ -192,18 +192,53 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 // Auto-fill Description, Image, and Rate from Product Data
                 const brand = brands.find(b => b.name === row.selectedBrand);
                 if (brand && brand.products) {
-                    const product = brand.products.find(p => p.productUrl === url);
+                    // Find product by URL (preferred) or Image URL (fallback)
+                    let product = brand.products.find(p =>
+                        (p.productUrl && p.productUrl === url) ||
+                        (p.imageUrl && p.imageUrl === url)
+                    );
+
+                    // Fallback: if no unique URL matched (e.g., empty image/product URLs), find by Model + Hierarchy
+                    if (!product) {
+                        const candidates = brand.products.filter(p =>
+                            p.mainCategory === row.selectedMainCat &&
+                            p.subCategory === row.selectedSubCat &&
+                            p.family === row.selectedFamily &&
+                            p.model === model
+                        );
+
+                        if (candidates.length > 0) {
+                            // Check if the synthetic ID contains an index suffix logic (e.g. model_CODE_0)
+                            // Structure from render: `model_${modelName}_${i}` or `model_${modelName}`
+                            if (url && url.startsWith('model_')) {
+                                const parts = url.split('_');
+                                // If 3 parts (model, CODE, index), try to parse index
+                                if (parts.length >= 3) {
+                                    const possibleIndex = parseInt(parts[parts.length - 1]);
+                                    if (!isNaN(possibleIndex) && candidates[possibleIndex]) {
+                                        product = candidates[possibleIndex];
+                                    } else {
+                                        product = candidates[0];
+                                    }
+                                } else {
+                                    product = candidates[0];
+                                }
+                            } else {
+                                product = candidates[0];
+                            }
+                        }
+                    }
+
                     if (product) {
                         row.brandDesc = product.description || product.model;
                         row.brandImage = product.imageUrl || '';
-                        // Calculate rate with costing factors
+                        // Set raw price directly without costing
                         const basePrice = parseFloat(product.price) || 0;
-                        if (basePrice > 0) {
-                            const markup = 1 + (costingFactors.profit + costingFactors.freight + costingFactors.customs + costingFactors.installation) / 100;
-                            const costedPrice = basePrice * markup * costingFactors.exchangeRate;
-                            row.rate = costedPrice.toFixed(2);
-                            row.basePrice = basePrice; // Store base price for recalculation
-                        }
+                        row.rate = basePrice.toFixed(2);
+                        row.basePrice = basePrice;
+
+                        // Default Unit to "Nos" if empty
+                        if (!row.unit) row.unit = 'Nos';
                     }
                 }
             } else {
@@ -342,8 +377,10 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         if (!tier || !tier.rows.length) return alert('No data to export');
 
         const isBoqMode = tier.mode === 'boq';
-        const doc = new jsPDF({ orientation: 'landscape' });
+        // Changed to Portrait
+        const doc = new jsPDF({ orientation: 'portrait' });
         const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
 
         const arabicLoaded = await loadArabicFont(doc);
         const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
@@ -367,14 +404,12 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         doc.text(`Multi-Budget Offer - ${activeTier.charAt(0).toUpperCase() + activeTier.slice(1)} Tier`, 10, 12);
 
         // Top Right Logo (Now Company Logo from Settings)
-        // Header is blue, so we use the White logo variant if available
         const logoToUse = logoWhite || logoBlue;
         if (logoToUse) {
             try {
                 const docLogo = await getImageData(logoToUse, { format: 'image/png', maxWidth: 800 });
                 if (docLogo) {
                     const logoFit = calcFitSize(docLogo.width, docLogo.height, 35, 12);
-                    // Use PNG for transparency, remove background box
                     doc.addImage(docLogo.dataUrl, 'PNG', pageWidth - 10 - logoFit.w, 3, logoFit.w, logoFit.h);
                 }
             } catch (e) { }
@@ -415,9 +450,9 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             }
         }
 
-        // Build table data (removed Brand column)
+        // Build table data
         const body = tier.rows.map((row, i) => {
-            const amount = (parseFloat(row.qty || 0) * parseFloat(row.rate || 0)).toFixed(2);
+            const amount = row.amount || (parseFloat(row.qty || 0) * parseFloat(row.rate || 0)).toFixed(2);
             if (isBoqMode) {
                 return [row.sn, '', processText(row.description), '', processText(row.brandDesc), row.qty || '', row.unit || '', row.rate || '', amount];
             } else {
@@ -431,7 +466,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             head: [processedHeader],
             body: body,
             theme: 'grid',
-            tableWidth: 'auto', // Let autoTable handle width but provide hint
+            tableWidth: 'auto',
             styles: {
                 fontSize: 8,
                 cellPadding: 2,
@@ -440,30 +475,31 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 font: arabicLoaded ? 'Almarai' : 'helvetica'
             },
             headStyles: { fillColor: colors.primary, textColor: colors.white, fontStyle: 'bold', font: arabicLoaded ? 'Almarai' : 'helvetica' },
+            // Optimized Portrait Column Widths
             columnStyles: isBoqMode ? {
-                0: { cellWidth: 10 },  // Sr
-                1: { cellWidth: 25 },  // Ref Image
-                2: { cellWidth: 50 },  // Original Desc
-                3: { cellWidth: 35 },  // Brand Image
-                4: { cellWidth: 50 },  // Brand Desc
-                5: { cellWidth: 12 },  // Qty
-                6: { cellWidth: 12 },  // Unit
-                7: { cellWidth: 18 },  // Rate
-                8: { cellWidth: 20 }   // Amount
+                0: { cellWidth: 8 },   // Sr
+                1: { cellWidth: 20 },  // Ref Image
+                2: { cellWidth: 35 },  // Original Desc
+                3: { cellWidth: 25 },  // Brand Image
+                4: { cellWidth: 35 },  // Brand Desc
+                5: { cellWidth: 10, halign: 'center' },  // Qty
+                6: { cellWidth: 10, halign: 'center' },  // Unit
+                7: { cellWidth: 16, halign: 'right' },   // Rate
+                8: { cellWidth: 18, halign: 'right' }    // Amount
             } : {
-                0: { cellWidth: 10 },
-                1: { cellWidth: 40 },
-                2: { cellWidth: 100 },
-                3: { cellWidth: 15 },
-                4: { cellWidth: 15 },
-                5: { cellWidth: 25 },
-                6: { cellWidth: 25 }
+                0: { cellWidth: 8 },
+                1: { cellWidth: 30 },
+                2: { cellWidth: 70 },
+                3: { cellWidth: 15, halign: 'center' }, // Qty
+                4: { cellWidth: 15, halign: 'center' }, // Unit
+                5: { cellWidth: 20, halign: 'right' },  // Rate
+                6: { cellWidth: 25, halign: 'right' }   // Amount
             },
             didDrawCell: (data) => {
                 if (data.section === 'body') {
                     const rowIdx = data.row.index;
-                    const refImgCol = isBoqMode ? 1 : -1;      // Ref Image column (shifted)
-                    const brandImgCol = isBoqMode ? 3 : 1;     // Brand Image column (shifted)
+                    const refImgCol = isBoqMode ? 1 : -1;
+                    const brandImgCol = isBoqMode ? 3 : 1;
 
                     // Draw ref image
                     if (data.column.index === refImgCol && imageDataMap[`ref_${rowIdx}`]) {
@@ -474,16 +510,15 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                         doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, undefined, 'FAST');
                     }
 
-                    // Draw brand logo above product image in the same cell
+                    // Draw brand logo + product image
                     if (data.column.index === brandImgCol) {
                         const hasLogo = imageDataMap[`logo_${rowIdx}`];
                         const hasBrandImg = imageDataMap[`brand_${rowIdx}`];
 
-                        const logoHeight = 8;  // Fixed height for logo area
+                        const logoHeight = 8;
                         const padding = 1;
-                        const gap = 2;  // Gap between logo and product image
+                        const gap = 2;
 
-                        // Draw brand logo at top of cell
                         if (hasLogo) {
                             const logoImg = imageDataMap[`logo_${rowIdx}`];
                             const logoFit = calcFitSize(logoImg.width, logoImg.height, data.cell.width - 4, logoHeight);
@@ -492,7 +527,6 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                             doc.addImage(logoImg.dataUrl, 'PNG', logoX, logoY, logoFit.w, logoFit.h);
                         }
 
-                        // Draw product image below logo
                         if (hasBrandImg) {
                             const img = imageDataMap[`brand_${rowIdx}`];
                             const imgStartY = hasLogo ? (data.cell.y + logoHeight + gap + padding) : (data.cell.y + padding);
@@ -511,9 +545,8 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 if (data.section === 'body') {
                     const refImgCol = isBoqMode ? 1 : -1;
                     const brandImgCol = isBoqMode ? 3 : 1;
-                    // Increase cell height for brand image column to fit logo + product image
                     if (data.column.index === brandImgCol) {
-                        data.cell.styles.minCellHeight = 32;  // Increased height for logo + image
+                        data.cell.styles.minCellHeight = 32;
                     } else if (data.column.index === refImgCol) {
                         data.cell.styles.minCellHeight = 22;
                     }
@@ -522,36 +555,41 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         });
 
         // Add Summary Section
-        const subtotal = tier.rows.reduce((sum, row) => sum + (parseFloat(row.qty || 0) * parseFloat(row.rate || 0)), 0);
+        const subtotal = tier.rows.reduce((sum, row) => sum + (parseFloat(row.amount || (parseFloat(row.qty || 0) * parseFloat(row.rate || 0))) || 0), 0);
         const vatAmount = subtotal * ((costingFactors.vat || 0) / 100);
         const grandTotal = subtotal + vatAmount;
 
-        const finalY = doc.lastAutoTable.finalY + 10;
-        const summaryWidth = 80;
+        const summaryWidth = 70; // Slightly smaller for portrait
         const summaryX = pageWidth - summaryWidth - 10;
+        let finalY = doc.lastAutoTable.finalY + 5; // Reduced gap
 
-        // Ensure we have space, if not add page
-        if (finalY + 25 > doc.internal.pageSize.getHeight()) {
+        // Check if summary fits on current page
+        // Summary needs approx 25 units of height
+        if (finalY + 25 > pageHeight) {
             doc.addPage();
-            // Optional: add a small header or just start summary at top
+            finalY = 20; // Start at top of new page
         }
 
         doc.setFontSize(10);
         doc.setTextColor(...colors.text);
         doc.setFont('helvetica', 'normal');
-        doc.text('Subtotal:', summaryX, finalY);
-        doc.text(`${subtotal.toFixed(2)} ${costingFactors.toCurrency}`, pageWidth - 10, finalY, { align: 'right' });
 
-        doc.text(`VAT (${costingFactors.vat}%):`, summaryX, finalY + 7);
-        doc.text(`${vatAmount.toFixed(2)} ${costingFactors.toCurrency}`, pageWidth - 10, finalY + 7, { align: 'right' });
+        // Subtotal
+        doc.text('Subtotal:', summaryX, finalY + 4);
+        doc.text(`${subtotal.toFixed(2)} ${costingFactors.toCurrency}`, pageWidth - 10, finalY + 4, { align: 'right' });
 
+        // VAT
+        doc.text(`VAT (${costingFactors.vat}%):`, summaryX, finalY + 9);
+        doc.text(`${vatAmount.toFixed(2)} ${costingFactors.toCurrency}`, pageWidth - 10, finalY + 9, { align: 'right' });
+
+        // Grand Total Box
         doc.setFont('helvetica', 'bold');
         doc.setFillColor(...colors.primary);
-        doc.rect(summaryX - 5, finalY + 11, summaryWidth + 5, 10, 'F');
+        doc.rect(summaryX - 2, finalY + 12, summaryWidth + 2, 8, 'F');
         doc.setTextColor(...colors.white);
-        doc.setFontSize(12);
-        doc.text('GRAND TOTAL:', summaryX, finalY + 17.5);
-        doc.text(`${grandTotal.toFixed(2)} ${costingFactors.toCurrency}`, pageWidth - 12, finalY + 17.5, { align: 'right' });
+        doc.setFontSize(11);
+        doc.text('GRAND TOTAL:', summaryX, finalY + 17);
+        doc.text(`${grandTotal.toFixed(2)} ${costingFactors.toCurrency}`, pageWidth - 12, finalY + 17, { align: 'right' });
 
         doc.save(`MultiBudget_${activeTier}_Offer.pdf`);
     };
@@ -1609,17 +1647,17 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
             <table className={styles.budgetTable}>
                 <thead>
                     <tr>
-                        <th style={{ width: '50px' }}>Sl</th>
-                        {isBoqMode && <th style={{ width: '80px' }}>Ref Img</th>}
-                        {isBoqMode && <th style={{ width: '200px' }}>Original Desc</th>}
-                        <th style={{ width: '80px' }}>Brand Img</th>
-                        <th style={{ width: '200px' }}>Brand Desc</th>
-                        <th style={{ width: '50px' }}>Qty</th>
-                        <th style={{ width: '50px' }}>Unit</th>
-                        <th style={{ width: '80px' }}>Rate</th>
-                        <th style={{ width: '90px' }}>Amount</th>
-                        <th style={{ width: '180px' }}>Product Selection</th>
-                        <th style={{ width: '60px' }}>Action</th>
+                        <th style={{ width: '50px', textAlign: 'center' }}>Sl</th>
+                        {isBoqMode && <th style={{ width: '80px', textAlign: 'center' }}>Ref Img</th>}
+                        {isBoqMode && <th style={{ width: '200px', textAlign: 'left' }}>Original Desc</th>}
+                        <th style={{ width: '80px', textAlign: 'center' }}>Brand Img</th>
+                        <th style={{ width: '200px', textAlign: 'left' }}>Brand Desc</th>
+                        <th style={{ width: '50px', textAlign: 'center' }}>Qty</th>
+                        <th style={{ width: '50px', textAlign: 'center' }}>Unit</th>
+                        <th style={{ width: '80px', textAlign: 'right' }}>Rate</th>
+                        <th style={{ width: '90px', textAlign: 'right' }}>Amount</th>
+                        <th style={{ width: '180px', textAlign: 'left' }}>Product Selection</th>
+                        <th style={{ width: '60px', textAlign: 'center' }}>Action</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -1650,15 +1688,19 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                 // Add each variant with a snippet of description or unique ID
                                 items.forEach((item, i) => {
                                     const snippet = item.description ? item.description.substring(0, 25) + '...' : `Variant ${i + 1}`;
+                                    // Use productUrl as unique ID, fallback to imageUrl if missing (common in Excel imports)
+                                    const uniqueVal = item.productUrl || item.imageUrl || `model_${modelName}_${i}`;
                                     modelOptions.push({
-                                        value: item.productUrl, // Use URL as unique value for better matching
+                                        value: uniqueVal,
                                         label: `${modelName} (${snippet})`,
                                         rawModel: modelName
                                     });
                                 });
                             } else {
+                                const item = items[0];
+                                const uniqueVal = item.productUrl || item.imageUrl || `model_${modelName}`;
                                 modelOptions.push({
-                                    value: items[0].productUrl,
+                                    value: uniqueVal,
                                     label: modelName,
                                     rawModel: modelName
                                 });
@@ -1847,9 +1889,9 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                 </td>
 
                                 <td>
-                                    <div className={styles.actionsCell}>
-                                        <button className={`${styles.iconBtn} ${styles.add}`} onClick={() => handleAddRow(index)}>+</button>
-                                        <button className={`${styles.iconBtn} ${styles.remove}`} onClick={() => handleRemoveRow(index)}>×</button>
+                                    <div className={styles.actionCell}>
+                                        <button className={`${styles.actionBtn} ${styles.addBtn}`} onClick={() => handleAddRow(index)}>+</button>
+                                        <button className={`${styles.actionBtn} ${styles.removeBtn}`} onClick={() => handleRemoveRow(index)}>×</button>
                                     </div>
                                 </td>
                             </tr>
