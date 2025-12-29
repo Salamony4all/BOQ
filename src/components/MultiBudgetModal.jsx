@@ -77,8 +77,14 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                                 (p.model === row.selectedModel) // Fallback match
                                             );
 
-                                            if (product && product.price > 0 && String(row.rate) === "0.00") {
+                                            const currentRate = parseFloat(row.rate || 0);
+                                            // Debug log
+                                            // console.log(`Checking ${row.selectedModel}: rate=${currentRate}, foundPrice=${product ? product.price : 'none'}`);
+
+                                            // Relaxed condition: if rate is 0 or missing, and we have a price
+                                            if (product && parseFloat(product.price) > 0 && currentRate === 0) {
                                                 const basePrice = parseFloat(product.price);
+                                                console.log(`Auto-updating ${row.selectedModel} price to ${basePrice}`);
                                                 return { ...row, rate: basePrice.toFixed(2), basePrice: basePrice };
                                             }
                                         }
