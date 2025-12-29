@@ -737,7 +737,7 @@ app.post('/api/brands/:id/import', upload.single('file'), async (req, res) => {
 
   } catch (error) {
     console.error('Import failed:', error);
-    res.status(500).json({ error: 'Import failed' });
+    res.status(500).json({ error: 'Import failed', details: error.message });
   }
 });
 

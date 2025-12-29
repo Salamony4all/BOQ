@@ -25,6 +25,7 @@ if (KV_URL && KV_TOKEN) {
 async function getLocalBrands() {
     // Try multiple possible paths where Vercel/Node might place the data
     const possiblePaths = [
+        isVercel ? '/tmp/data/brands' : path.join(process.cwd(), 'server/data/brands'),
         path.join(process.cwd(), 'server/data/brands'),
         path.join(__dirname, 'data/brands'),
         '/var/task/server/data/brands'
@@ -100,19 +101,21 @@ export const brandStorage = {
                 return true;
             } catch (error) { return false; }
         } else {
-            // Local dev save
-            if (isVercel) {
-                console.warn('[Storage] Cannot save brand to local disk on Vercel - KV is required.');
-                return false;
-            }
+            // Local dev save OR Vercel /tmp fallback
             try {
-                const brandsDir = path.join(__dirname, 'data/brands');
+                // On Vercel, use /tmp/data/brands. On local, use server/data/brands
+                const baseDir = isVercel ? '/tmp/data/brands' : path.join(__dirname, 'data/brands');
+
                 const sanitizedName = brand.name.toLowerCase().replace(/[^a-z0-9]/g, '_');
                 const filename = `${sanitizedName}-${brand.budgetTier || 'mid'}.json`;
-                await fs.mkdir(brandsDir, { recursive: true });
-                await fs.writeFile(path.join(brandsDir, filename), JSON.stringify(brand, null, 2));
+
+                await fs.mkdir(baseDir, { recursive: true });
+                await fs.writeFile(path.join(baseDir, filename), JSON.stringify(brand, null, 2));
                 return true;
-            } catch (error) { return false; }
+            } catch (error) {
+                console.error('[Storage] Filesystem save failed:', error);
+                return false;
+            }
         }
     },
 
@@ -123,12 +126,16 @@ export const brandStorage = {
                 return true;
             } catch (error) { return false; }
         } else {
-            if (isVercel) return false;
             try {
-                const brandsDir = path.join(__dirname, 'data/brands');
-                const files = await fs.readdir(brandsDir);
+                const baseDir = isVercel ? '/tmp/data/brands' : path.join(__dirname, 'data/brands');
+                // Check if dir exists first
+                try {
+                    await fs.access(baseDir);
+                } catch { return false; }
+
+                const files = await fs.readdir(baseDir);
                 for (const file of files) {
-                    const fullPath = path.join(brandsDir, file);
+                    const fullPath = path.join(baseDir, file);
                     const content = await fs.readFile(fullPath, 'utf8');
                     const data = JSON.parse(content);
                     if (String(data.id) === String(brandId)) {
