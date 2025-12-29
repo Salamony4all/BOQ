@@ -725,7 +725,10 @@ app.post('/api/brands/:id/import', upload.single('file'), async (req, res) => {
     const products = await dbManager.importFromExcel(req.file.path);
 
     brand.products = products; // Update products
-    await brandStorage.saveBrand(brand);
+    const saved = await brandStorage.saveBrand(brand);
+    if (!saved) {
+      throw new Error('Failed to save brand data to persistent storage (KV/File).');
+    }
 
     // Clean up uploaded file
     try { await fs.unlink(req.file.path); } catch (e) { }

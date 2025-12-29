@@ -38,14 +38,14 @@ class ExcelDbManager {
             const vals = row.values;
             if (vals.length > 0) {
                 products.push({
-                    mainCategory: vals[1] || '',
-                    subCategory: vals[2] || '',
-                    family: vals[3] || '',
-                    model: vals[4] || '',
-                    description: vals[5] || '',
-                    imageUrl: vals[6] || '',
-                    price: vals[7] || 0,
-                    productUrl: vals[8] || ''
+                    mainCategory: vals[1] ? String(vals[1]).trim() : '',
+                    subCategory: vals[2] ? String(vals[2]).trim() : '',
+                    family: vals[3] ? String(vals[3]).trim() : '',
+                    model: vals[4] ? String(vals[4]).trim() : '',
+                    description: vals[5] ? String(vals[5]).trim() : '',
+                    imageUrl: vals[6] ? String(vals[6]).trim() : '',
+                    price: vals[7] ? parseFloat(String(vals[7]).replace(/[^0-9.-]+/g, '')) || 0 : 0,
+                    productUrl: vals[8] ? String(vals[8]).trim() : ''
                 });
             }
         });

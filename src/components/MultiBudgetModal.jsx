@@ -57,7 +57,40 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         fetch(`${API_BASE}/api/brands`)
             .then(res => res.json())
             .then(data => {
-                if (Array.isArray(data)) setBrands(data);
+                if (Array.isArray(data)) {
+                    setBrands(data);
+
+                    // Auto-update prices in existing rows if they are 0
+                    setTierData(prev => {
+                        const newState = { ...prev };
+                        ['budgetary', 'mid', 'high'].forEach(tierName => {
+                            const tier = newState[tierName];
+                            if (tier && tier.rows) {
+                                const newRows = tier.rows.map(row => {
+                                    if (row.selectedBrand && row.selectedModel) {
+                                        const brand = data.find(b => b.name === row.selectedBrand);
+                                        if (brand && brand.products) {
+                                            // Find the product
+                                            let product = brand.products.find(p =>
+                                                (p.productUrl && p.productUrl === row.selectedModelUrl) ||
+                                                (p.model === row.selectedModel && p.productUrl === row.selectedModelUrl) ||
+                                                (p.model === row.selectedModel) // Fallback match
+                                            );
+
+                                            if (product && product.price > 0 && String(row.rate) === "0.00") {
+                                                const basePrice = parseFloat(product.price);
+                                                return { ...row, rate: basePrice.toFixed(2), basePrice: basePrice };
+                                            }
+                                        }
+                                    }
+                                    return row;
+                                });
+                                newState[tierName] = { ...tier, rows: newRows };
+                            }
+                        });
+                        return newState;
+                    });
+                }
             })
             .catch(err => console.error('Failed to load brands', err));
     };
