@@ -280,7 +280,12 @@ function AppContent({ onOpenSettings }) {
         {/* Hero Section */}
         <section className={styles.hero}>
           {/* Logo */}
-          <h1 className={styles.logo}>BOQFLOW</h1>
+          {/* Logo with Image Q */}
+          <div className={styles.logoContainer}>
+            <span className={styles.logoTextBlue}>BO</span>
+            <img src="/geared_q.png" alt="Q" className={styles.logoImage} />
+            <span className={styles.logoTextGold}>FLOW</span>
+          </div>
 
           {/* Main Headline */}
           <h2 className={styles.headline}>

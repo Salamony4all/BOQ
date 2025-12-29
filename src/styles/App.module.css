@@ -111,17 +111,52 @@
 }
 
 /* Logo - Text Only, Large */
-.logo {
+/* Logo - Split with Image Q */
+.logoContainer {
   font-size: 5rem;
   font-weight: 900;
-  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  letter-spacing: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
   margin-bottom: 2rem;
   text-transform: uppercase;
   animation: fadeInUp 0.6s ease-out;
+  line-height: 1;
+}
+
+.logoTextBlue {
+  background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 4px;
+}
+
+.logoTextGold {
+  background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 4px;
+}
+
+.logoImage {
+  height: 0.95em;
+  width: auto;
+  /* Pull closer to O and F to look like one word */
+  margin-left: -15px;
+  margin-right: -5px;
+  margin-top: 0.05em;
+  /* Optical alignment */
+  object-fit: contain;
+  /* Shadow for depth */
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+  transition: transform 0.3s ease;
+}
+
+.logoImage:hover {
+  transform: rotate(15deg) scale(1.1);
 }
 
 /* Headlines */
