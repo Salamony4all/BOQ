@@ -53,14 +53,17 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         exchangeRate: 0.385
     });
 
-    useEffect(() => {
-        // Fetch brands on mount
+    const fetchBrands = () => {
         fetch(`${API_BASE}/api/brands`)
             .then(res => res.json())
             .then(data => {
                 if (Array.isArray(data)) setBrands(data);
             })
             .catch(err => console.error('Failed to load brands', err));
+    };
+
+    useEffect(() => {
+        fetchBrands();
     }, []);
 
     if (!isOpen) return null;
@@ -2014,6 +2017,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                 isOpen={isAddBrandOpen}
                 onClose={() => setIsAddBrandOpen(false)}
                 onBrandAdded={handleBrandAdded}
+                onBrandUpdated={fetchBrands}
             />
             {/* Costing Modal */}
             <CostingModal

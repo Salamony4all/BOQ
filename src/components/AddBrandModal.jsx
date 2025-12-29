@@ -4,7 +4,7 @@ import { useScraping } from '../context/ScrapingContext';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
 
-export default function AddBrandModal({ isOpen, onClose, onBrandAdded }) {
+export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUpdated }) {
     const [name, setName] = useState('');
     const [website, setWebsite] = useState('');
     const [origin, setOrigin] = useState('');
@@ -150,6 +150,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded }) {
             if (data.success) {
                 alert(`Database for brand updated successfully! (${data.count} products)`);
                 fetchBrands();
+                if (onBrandUpdated) onBrandUpdated();
             } else {
                 throw new Error(data.error || 'Update failed');
             }
