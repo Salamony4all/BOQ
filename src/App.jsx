@@ -29,8 +29,8 @@ const ThemeToggle = () => {
     <button
       onClick={toggleTheme}
       style={{
-        background: 'rgba(255, 255, 255, 0.1)',
-        border: '1px solid rgba(255, 255, 255, 0.2)',
+        background: theme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+        border: theme === 'dark' ? '1px solid rgba(255, 255, 255, 0.2)' : '1px solid rgba(0, 0, 0, 0.1)',
         borderRadius: '50%',
         width: '40px',
         height: '40px',
@@ -38,11 +38,12 @@ const ThemeToggle = () => {
         alignItems: 'center',
         justifyContent: 'center',
         cursor: 'pointer',
-        color: theme === 'dark' ? '#fbbf24' : '#f59e0b',
+        color: theme === 'dark' ? '#fbbf24' : '#d97706', // Darker amber for light mode visibility
         fontSize: '1.2rem',
         zIndex: 100,
         backdropFilter: 'blur(5px)',
-        transition: 'all 0.2s'
+        transition: 'all 0.2s',
+        boxShadow: theme === 'dark' ? 'none' : '0 2px 5px rgba(0,0,0,0.05)'
       }}
       title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
     >

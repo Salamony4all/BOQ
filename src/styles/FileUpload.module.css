@@ -6,9 +6,9 @@
 }
 
 .dropZone {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--bg-card);
     backdrop-filter: blur(10px);
-    border: 2px dashed rgba(255, 255, 255, 0.2);
+    border: 2px dashed var(--border-color);
     border-radius: 20px;
     padding: 2rem;
     text-align: center;
@@ -40,13 +40,13 @@
 }
 
 .dropZone:hover {
-    border-color: rgba(102, 126, 234, 0.6);
+    border-color: var(--accent);
     transform: translateY(-2px);
     box-shadow: 0 10px 40px rgba(102, 126, 234, 0.2);
 }
 
 .dragging {
-    border-color: #667eea;
+    border-color: var(--accent);
     background: rgba(102, 126, 234, 0.1);
     transform: scale(1.02);
 }
@@ -66,19 +66,19 @@
 .uploadTitle {
     font-size: 1.5rem;
     font-weight: 600;
-    color: #f8fafc;
+    color: var(--text-primary);
     margin-bottom: 0.5rem;
 }
 
 .uploadHint {
     font-size: 1rem;
-    color: #cbd5e1;
+    color: var(--text-secondary);
     margin-bottom: 1rem;
 }
 
 .uploadFormats {
     font-size: 0.875rem;
-    color: #94a3b8;
+    color: var(--text-muted);
 }
 
 @keyframes fadeIn {

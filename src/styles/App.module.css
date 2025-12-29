@@ -17,6 +17,8 @@
   height: 32px;
   width: auto;
   object-fit: contain;
+  /* Shadow for visibility on light backgrounds */
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.2));
 }
 
 .logoTextSmall {
