@@ -31,6 +31,9 @@ async function getLocalBrands() {
         '/var/task/server/data/brands'
     ];
 
+    const allBrands = [];
+    const seenIds = new Set();
+
     for (const brandsPath of possiblePaths) {
         try {
             const files = await fs.readdir(brandsPath);
@@ -43,11 +46,17 @@ async function getLocalBrands() {
                         return JSON.parse(content);
                     } catch (e) { return null; }
                 }));
-                return brands.filter(b => b !== null);
+
+                for (const brand of brands) {
+                    if (brand && !seenIds.has(brand.id)) {
+                        seenIds.add(brand.id);
+                        allBrands.push(brand);
+                    }
+                }
             }
         } catch (e) { /* silent skip */ }
     }
-    return [];
+    return allBrands;
 }
 
 export const brandStorage = {
@@ -69,9 +78,29 @@ export const brandStorage = {
                     }
                 }
 
-                if (keys.length === 0) return [];
-                const brands = await kv.mget(...keys);
-                return brands.filter(Boolean);
+                if (keys.length === 0) {
+                    // Even if KV empty, return local brands
+                    return await getLocalBrands();
+                }
+
+                // 1. Get KV Brands
+                const kvBrandsRaw = await kv.mget(...keys);
+                const kvBrands = kvBrandsRaw.filter(Boolean);
+
+                // 2. Get Local Brands (Filesystem / Tmp)
+                // We MUST check local storage too, because fallback saves go there
+                const localBrands = await getLocalBrands();
+
+                // 3. Merge them (KV takes precedence if ID matches)
+                const brandMap = new Map();
+
+                // Add local first
+                localBrands.forEach(b => brandMap.set(String(b.id), b));
+
+                // Overwrite with KV (newer)
+                kvBrands.forEach(b => brandMap.set(String(b.id), b));
+
+                return Array.from(brandMap.values());
             } catch (error) {
                 console.error('[Storage] Vercel KV error:', error.message);
                 // Fallback to local data if KV fails
