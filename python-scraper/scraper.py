@@ -1,7 +1,7 @@
 import sys
 import json
 import logging
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 # Configure logging to console
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -11,427 +11,445 @@ try:
     from scrapling import DynamicFetcher
 except ImportError as e:
     logger.error(f"CRITICAL: Failed to import scrapling: {e}")
-    # Don't pass, let it crash or define a dummy to avoid NameError if you want to keep running for health checks
-    # But for debugging, we want to know.
     import traceback
     logger.error(traceback.format_exc())
     DynamicFetcher = None
 
+# === CONFIGURATION ===
+PRODUCT_KEYWORDS = ['product', 'products', 'item', 'shop', 'collection', 'category', 'furniture', 'chair', 'desk', 'table', 'seating']
+EXCLUDE_KEYWORDS = ['contact', 'about', 'login', 'cart', 'privacy', 'social', 'news', 'blog', 'terms', 'careers', 'account', 'faq', 'instagram', 'facebook', 'twitter', 'youtube', 'linkedin']
+IMAGE_EXCLUDE = ['logo', 'icon', 'arrow', 'chevron', 'placeholder', 'blank', 'loading', 'spinner', 'social', 'banner']
+
+
+def is_valid_product_image(url):
+    """Check if image URL is likely a product image, not UI element."""
+    if not url or len(url) < 10:
+        return False
+    lower = url.lower()
+    return not any(term in lower for term in IMAGE_EXCLUDE)
+
+
+def extract_products_from_page(page, base_url, brand_name, category='General'):
+    """
+    Extract products from a page using multiple strategies.
+    Mirrors the approach from structureScraper.js.
+    """
+    products = []
+    seen = set()
+    
+    # === STRATEGY 1: WooCommerce product containers ===
+    woo_selectors = [
+        'li.product',
+        '.products .product',
+        '.product-item',
+        '.product-card',
+        '[class*="product-item"]',
+        '[class*="product-card"]'
+    ]
+    
+    for selector in woo_selectors:
+        try:
+            containers = page.css(selector)
+            if containers and len(containers) > 0:
+                logger.info(f"Found {len(containers)} containers with selector: {selector}")
+                
+                for container in containers:
+                    try:
+                        # Extract title
+                        title = None
+                        for title_sel in ['h2::text', 'h3::text', '.woocommerce-loop-product__title::text', '.product-title::text', '.title::text', 'a::attr(title)']:
+                            title = container.css(title_sel).get()
+                            if title and len(title.strip()) > 2:
+                                title = title.strip()
+                                break
+                        
+                        if not title:
+                            # Try getting text from main link
+                            link_text = container.css('a::text').get()
+                            if link_text and len(link_text.strip()) > 2:
+                                title = link_text.strip()
+                        
+                        if not title or title.lower() in seen:
+                            continue
+                        
+                        # Extract image
+                        img_src = (
+                            container.css('img::attr(src)').get() or
+                            container.css('img::attr(data-src)').get() or
+                            container.css('img::attr(data-lazy-src)').get()
+                        )
+                        
+                        # Check srcset for better quality
+                        srcset = container.css('img::attr(srcset)').get()
+                        if srcset:
+                            # Take the first URL from srcset
+                            img_src = srcset.split(',')[0].strip().split(' ')[0] or img_src
+                        
+                        if not img_src or not is_valid_product_image(img_src):
+                            continue
+                        
+                        # Extract product URL
+                        product_url = container.css('a::attr(href)').get()
+                        if not product_url:
+                            continue
+                        
+                        full_img = urljoin(base_url, img_src)
+                        full_url = urljoin(base_url, product_url)
+                        
+                        if full_url in seen:
+                            continue
+                        
+                        seen.add(title.lower())
+                        seen.add(full_url)
+                        
+                        products.append({
+                            "name": title,
+                            "link": full_url,
+                            "image": full_img,
+                            "category": category,
+                            "source": "woocommerce"
+                        })
+                        
+                    except Exception as e:
+                        continue
+                        
+        except Exception as e:
+            continue
+    
+    # === STRATEGY 2: Generic container detection (like structureScraper.js) ===
+    if len(products) < 5:
+        try:
+            # Look for div/li/article that contains both img and link
+            containers = page.css('div, li, article, section')
+            
+            for container in containers:
+                try:
+                    # Must have image
+                    img = container.css('img')
+                    if not img:
+                        continue
+                    
+                    # Must have link
+                    link = container.css('a[href]')
+                    if not link:
+                        continue
+                    
+                    # Check for heading or substantial text
+                    heading = container.css('h1, h2, h3, h4, h5, .title, .name')
+                    link_text = link.css('::text').get() or ""
+                    
+                    # Get the name
+                    title = None
+                    if heading:
+                        title = heading.css('::text').get()
+                    if not title and len(link_text.strip()) > 5:
+                        title = link_text.strip()
+                    
+                    if not title or len(title) < 3 or title.lower() in seen:
+                        continue
+                    
+                    # Get image
+                    img_src = (
+                        img.css('::attr(src)').get() or
+                        img.css('::attr(data-src)').get()
+                    )
+                    
+                    if not img_src or not is_valid_product_image(img_src):
+                        continue
+                    
+                    # Get URL
+                    href = link.css('::attr(href)').get()
+                    if not href:
+                        continue
+                    
+                    full_url = urljoin(base_url, href)
+                    full_img = urljoin(base_url, img_src)
+                    
+                    if full_url in seen:
+                        continue
+                    
+                    # Skip if already added
+                    if any(p['link'] == full_url for p in products):
+                        continue
+                    
+                    seen.add(title.lower())
+                    seen.add(full_url)
+                    
+                    products.append({
+                        "name": title,
+                        "link": full_url,
+                        "image": full_img,
+                        "category": category,
+                        "source": "generic"
+                    })
+                    
+                except:
+                    continue
+                    
+        except Exception as e:
+            logger.warning(f"Generic extraction error: {e}")
+    
+    # === STRATEGY 3: JSON-LD Structured Data ===
     try:
-        logger.info(f"Starting extraction for {url}")
+        scripts = page.css('script[type="application/ld+json"]::text').getall()
+        if not isinstance(scripts, list):
+            single = page.css('script[type="application/ld+json"]::text').get()
+            scripts = [single] if single else []
         
-        # Scrapling's DynamicFetcher (sync) inside FastAPI (async) causes:
-        # "Playwright Sync API inside the asyncio loop. Please use the Async API"
-        # Since we are in a lightweight service, usually we can just use AsyncFetcher 
-        # OR run the sync fetcher in a thread.
-        # Let's try switching to AsyncFether? 
-        # But for stability with camoufox, some docs suggest sync. 
-        # Simplest fix: Run the logic in a thread so it doesn't block the async loop.
-        # But we need to refactor scrape_url to be sync blocking, and call it via run_in_executor in main.py?
+        for script in scripts:
+            try:
+                data = json.loads(script)
+                items = data.get('@graph', [data]) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+                    
+                    item_type = item.get('@type', '')
+                    if isinstance(item_type, list):
+                        item_type = item_type[0]
+                    
+                    if item_type == 'Product':
+                        p_name = item.get('name')
+                        p_img = item.get('image')
+                        if isinstance(p_img, list):
+                            p_img = p_img[0]
+                        elif isinstance(p_img, dict):
+                            p_img = p_img.get('url')
+                        
+                        p_url = item.get('url') or base_url
+                        
+                        if p_name and p_img:
+                            full_url = urljoin(base_url, p_url)
+                            full_img = urljoin(base_url, p_img)
+                            
+                            if full_url not in seen and p_name.lower() not in seen:
+                                products.append({
+                                    "name": p_name,
+                                    "link": full_url,
+                                    "image": full_img,
+                                    "category": category,
+                                    "source": "json-ld"
+                                })
+                                seen.add(full_url)
+                                seen.add(p_name.lower())
+                    
+                    elif item_type == 'ItemList':
+                        for li in item.get('itemListElement', []):
+                            if isinstance(li, dict):
+                                product = li.get('item')
+                                if product and isinstance(product, dict):
+                                    p_name = product.get('name')
+                                    p_url = product.get('url') or product.get('@id')
+                                    p_img = product.get('image')
+                                    
+                                    if p_name and p_url:
+                                        full_url = urljoin(base_url, p_url)
+                                        full_img = urljoin(base_url, p_img) if p_img else ""
+                                        
+                                        if full_url not in seen:
+                                            products.append({
+                                                "name": p_name,
+                                                "link": full_url,
+                                                "image": full_img,
+                                                "category": category,
+                                                "source": "json-ld-list"
+                                            })
+                                            seen.add(full_url)
+            except:
+                continue
+    except Exception as e:
+        logger.warning(f"JSON-LD extraction error: {e}")
+    
+    return products, seen
+
+
+def discover_category_pages(page, base_url):
+    """
+    Find category/collection pages to crawl.
+    Mirrors discoverHierarchyLinks from structureScraper.js.
+    """
+    categories = []
+    seen = set()
+    
+    try:
+        # Look in navigation and sidebar
+        nav_links = page.css('nav a, header a, .menu a, .navigation a, .sidebar a, a')
         
-        # Actually, let's keep scrape_url sync, but ensure we don't start Playwright Sync inside the async event loop thread directly?
-        # Actually, FastAPI runs endpoints in a threadpool if they are defined as 'def', 
-        # and in the main loop if defined as 'async def'.
-        # Our main.py has `async def scrape_endpoint`.
-        # So we are IN the loop. Calling sync playwright here crashes.
+        for link in nav_links:
+            try:
+                href = link.css('::attr(href)').get()
+                if not href or href == '#' or href.startswith('javascript'):
+                    continue
+                
+                text = link.css('::text').get() or ""
+                text = text.strip()
+                
+                full_url = urljoin(base_url, href)
+                
+                # Must be same domain
+                if not full_url.startswith(base_url):
+                    continue
+                
+                if full_url in seen or full_url == base_url:
+                    continue
+                
+                href_lower = href.lower()
+                text_lower = text.lower()
+                
+                # Skip excluded URLs
+                if any(ex in href_lower for ex in EXCLUDE_KEYWORDS):
+                    continue
+                
+                # Check for product-related keywords
+                is_product_link = any(kw in href_lower or kw in text_lower for kw in PRODUCT_KEYWORDS)
+                
+                if is_product_link and len(text) > 2 and len(text) < 50:
+                    seen.add(full_url)
+                    categories.append({
+                        "url": full_url,
+                        "title": text if text else "Products"
+                    })
+                    
+            except:
+                continue
+                
+    except Exception as e:
+        logger.warning(f"Category discovery error: {e}")
+    
+    return categories
+
+
+def find_pagination(page, base_url):
+    """Find pagination links on current page."""
+    pagination_urls = []
+    seen = set()
+    
+    try:
+        selectors = ['.pagination a', '.pager a', 'a[class*="page"]', 'a[href*="page="]', 'a.next', 'a[rel="next"]']
         
-        # We should use `AsyncFetcher`!
-        from scrapling import AsyncFetcher
-        
-        # We need to await it, so scrape_url must be async.
-        # Refactoring to async.
-        pass
-    except:
-        pass
+        for sel in selectors:
+            try:
+                links = page.css(sel)
+                for link in links:
+                    href = link.css('::attr(href)').get()
+                    if href and not href.startswith('#') and not href.startswith('javascript'):
+                        full_url = urljoin(base_url, href)
+                        if full_url.startswith(base_url) and full_url not in seen:
+                            seen.add(full_url)
+                            pagination_urls.append(full_url)
+            except:
+                continue
+                
+    except Exception as e:
+        logger.warning(f"Pagination error: {e}")
+    
+    return pagination_urls[:10]  # Limit to 10 pages
+
 
 def scrape_url(url):
+    """Main scraping function."""
     try:
         logger.info(f"Starting extraction for {url}")
         
-        # v0.3+ API change: headless is often passed to init or configure.
-        # The error "Unknown parser argument: headless" on fetch() suggests fetch() interprets args as parser args (lxml),
-        # not browser args, if the fetcher is already configured?
-        # OR implementation details: fetch(url, **kwargs) -> if kwargs are not known, it passes them to parser?
-        
-        # Let's try explicit init with headless.
-        # If deprecated warning happens, it's better than crash.
-        # But we saw "Unknown parser argument" on fetch(..., headless=True). 
-        # So headless=True is NOT a valid argument for fetch().
-        
-        # Let's try:
-        # fetcher = DynamicFetcher(headless=True)
-        # page = fetcher.fetch(url)
-        
-        # If init is deprecated, we might need:
         fetcher = DynamicFetcher(headless=True)
-        
         page = fetcher.fetch(url)
+        
+        base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
         
         # Brand Info
         title = page.css('title::text').get() or "Unknown Brand"
         brand_name = title.split('|')[0].split('-')[0].strip()
         
-        # Logo - try to find header logo
+        # Logo
         logo = ""
-        # Heuristics for logo
-        logo_img = page.css('header img')
-        if logo_img:
-            # Scrapling/Parcel Selectors might return a list of elements/Selector objects.
-            # If logo_img is truthy, we might need to get the first one.
-            # And checking the error: 'Selectors' object has no attribute 'attrib'
-            # This suggests logo_img is a list-like 'Selectors' object, not a single Element.
-            # We should probably do: logo_img[0].attrib['src'] or similar.
-            # But the safer Scrapling way:
-            src = logo_img.attrib['src'] if hasattr(logo_img, 'attrib') else None
-            # Actually, let's look at Scrapling docs pattern:
-            # page.css('header img') -> Selectors
-            # page.css('header img').attrib['src'] ?? No.
-            
-            # Standard pattern:
-            # page.css('header img::attr(src)').get()
-            
-            src = page.css('header img::attr(src)').get()
+        logo_selectors = [
+            'header img[src*="logo"]::attr(src)',
+            '.logo img::attr(src)',
+            '[class*="logo"] img::attr(src)',
+            'header img::attr(src)'
+        ]
+        for sel in logo_selectors:
+            src = page.css(sel).get()
             if src:
                 logo = urljoin(url, src)
+                break
         
-        products = []
-        seen_urls = set()
+        all_products = []
+        all_seen = set()
         
-        # Simple heuristic: Look for <a> tags that contain <img> and minimal text
-        links = page.css('a')
-        logger.info(f"Found {len(links)} links, analyzing potential products...")
+        # === PHASE 1: Extract from current page ===
+        logger.info("Phase 1: Extracting from main page...")
+        products, seen = extract_products_from_page(page, base_url, brand_name, 'Homepage')
+        all_products.extend(products)
+        all_seen.update(seen)
+        logger.info(f"Found {len(products)} products on main page")
         
-        for link in links:
-            # Scrapling/Patchright Selectors:
-            # .attrib is usually on an Element, but 'link' here might be a Selector wrapper.
-            # If so, it might not have .attrib.
-            # Safe way in Scrapling/Parcel: link.css('::attr(href)').get()
-            
-            href = link.css('::attr(href)').get()
-            # Fallback
-            if href is None and hasattr(link, 'attrib'):
-                href = link.attrib.get('href')
-            
-            if not href or href.startswith('#') or href.startswith('javascript'):
-                continue
-                
-            full_url = urljoin(url, href)
-            
-            if full_url in seen_urls:
-                continue
-            
-            # Check for image inside
-            # link is a Selector/Element. `img` selector inside `a`
-            imgs = link.css('img')
-            
-            # Check for text (name)
-            # Use recursive text extraction (xpath .//text()) to capture text in h2, span, etc.
-            text = None
-            try:
-                # Try XPath for recursive text
-                if hasattr(link, 'xpath'):
-                    all_text_nodes = link.xpath('.//text()').getall()
-                    text = " ".join([t.strip() for t in all_text_nodes if t.strip()])
-                else:
-                    # Fallback to CSS descendants
-                    # Note: ' *::text' selects all text nodes of all descendants
-                    text_nodes = link.css('*::text') 
-                    if hasattr(text_nodes, 'getall'):
-                        text = " ".join([t.strip() for t in text_nodes.getall() if t.strip()])
-            except:
-                pass
-            
-            # Fallback to direct text if recursive failed or wasn't supported
-            if not text:
-                 try:
-                    text = link.css('::text').get()
-                 except: 
-                    pass
-            
-            # If no text found in <a>, maybe it's usually adjacent? 
-            # But let's stick to containment for now.
-            if not text:
-                # Sometimes the image has alt text
-                if imgs:
-                    text = imgs.css('::attr(alt)').get()
-            
-            if not text:
-                continue
-                
-            text = text.strip()
-            
-            # Heuristic: Is this a product URL?
-            is_product_url = '/product/' in full_url or '/item/' in full_url or '/shop/' in full_url
-            
-            # Relaxed length check if it looks like a product URL
-            if is_product_url:
-                 if len(text) < 2: # Very short
-                     continue
-            else:
-                 if len(text) < 3 or len(text) > 300:
-                     continue
-            
-            # Filter out common UI elements
-            low_text = text.lower()
-            if any(x == low_text for x in ['menu', 'home', 'login', 'cart']): # Exact match for short words
-                continue
-            if not is_product_url and any(x in low_text for x in ['instagram', 'facebook', 'twitter', 'policy', 'terms']):
-                continue
-
-            if imgs:
-                # Better image src extraction
-                img_src = (
-                    imgs.css('::attr(src)').get() or 
-                    imgs.css('::attr(data-src)').get() or 
-                    imgs.css('::attr(srcset)').get() # simplistic
-                )
-                
-                # If srcset, take first URL
-                if img_src and ',' in img_src:
-                    img_src = img_src.split(',')[0].strip().split(' ')[0]
-                
-                if img_src:
-                    full_img_src = urljoin(url, img_src)
-                    
-                    products.append({
-                        "name": text,
-                        "link": full_url,
-                        "image": full_img_src
-                    })
-                    seen_urls.add(full_url)
+        # === PHASE 2: Discover and crawl category pages ===
+        categories = discover_category_pages(page, base_url)
+        logger.info(f"Phase 2: Discovered {len(categories)} category pages")
         
-        # --- Universal Strategy 2: JSON-LD Extraction ---
-        try:
-            json_ld_scripts = page.css('script[type="application/ld+json"]::text').getall()
-            if not isinstance(json_ld_scripts, list):
-                # Fallback if getall not supported/returned strict
-                 json_ld_scripts = []
-                 single = page.css('script[type="application/ld+json"]::text').get()
-                 if single: json_ld_scripts.append(single)
-
-            for script in json_ld_scripts:
+        # Also try common product page URLs if no categories found
+        if len(categories) == 0:
+            common_paths = ['/products/', '/product/', '/shop/', '/collection/', '/collections/', '/catalogue/']
+            for path in common_paths:
                 try:
-                    data = json.loads(script)
-                    # Handle graph
-                    items = data.get('@graph', [data]) if isinstance(data, dict) else (data if isinstance(data, list) else [])
-                    
-                    for item in items:
-                        if not isinstance(item, dict): continue
-                        
-                        item_type = item.get('@type', '')
-                        if isinstance(item_type, list): item_type = item_type[0] # simplification
-                        
-                        # Case 1: Single Product on page
-                        if item_type == 'Product':
-                            p_name = item.get('name')
-                            p_img = item.get('image')
-                            if isinstance(p_img, list): p_img = p_img[0]
-                            elif isinstance(p_img, dict): p_img = p_img.get('url')
-                            
-                            p_url = item.get('url') or url # Default to current page if not valid
-                            
-                            if p_name and p_img:
-                                full_p_url = urljoin(url, p_url)
-                                full_p_img = urljoin(url, p_img)
-                                
-                                if full_p_url not in seen_urls:
-                                    products.append({
-                                        "name": p_name,
-                                        "link": full_p_url,
-                                        "image": full_p_img,
-                                        "source": "json-ld"
-                                    })
-                                    seen_urls.add(full_p_url)
-                                    
-                        # Case 2: ItemList (Category/Shop page)
-                        elif item_type == 'ItemList':
-                            list_items = item.get('itemListElement', [])
-                            for li in list_items:
-                                # Sometimes li is just a string, usually a dict
-                                if isinstance(li, dict):
-                                    # Config 1: li has 'item' which is the product
-                                    product = li.get('item')
-                                    if product and isinstance(product, dict):
-                                        p_name = product.get('name')
-                                        p_url = product.get('url') or product.get('@id')
-                                        p_img = product.get('image')
-                                        
-                                        if p_name and p_url:
-                                            full_p_url = urljoin(url, p_url)
-                                            full_p_img = urljoin(url, p_img) if p_img else ""
-                                            
-                                            if full_p_url not in seen_urls:
-                                                products.append({
-                                                    "name": p_name,
-                                                    "link": full_p_url,
-                                                    "image": full_p_img,
-                                                    "source": "json-ld-list"
-                                                })
-                                                seen_urls.add(full_p_url)
+                    test_url = urljoin(base_url, path)
+                    categories.append({"url": test_url, "title": path.strip('/')})
                 except:
                     continue
-        except Exception as e:
-            logger.warning(f"JSON-LD error: {e}")
-
-        # --- Universal Strategy 3: Meta Tag / Open Graph Extraction ---
-        # Useful if the page IS a product page
-        try:
-            og_type = page.css('meta[property="og:type"]::attr(content)').get()
-            if og_type == 'product':
-                p_name = page.css('meta[property="og:title"]::attr(content)').get()
-                p_img = page.css('meta[property="og:image"]::attr(content)').get()
-                p_url = page.css('meta[property="og:url"]::attr(content)').get() or url
-                
-                if p_name and p_img:
-                    full_p_url = urljoin(url, p_url)
-                    full_p_img = urljoin(url, p_img)
-                    
-                    if full_p_url not in seen_urls:
-                        products.append({
-                            "name": p_name,
-                            "link": full_p_url,
-                            "image": full_p_img,
-                            "source": "og-meta"
-                        })
-                        seen_urls.add(full_p_url)
-        except:
-            pass
-
         
-        
-        logger.info(f"Extracted {len(products)} potential products.")
-        
-        # --- DISCOVERY PHASE ---
-        # If we found very few products (e.g. < 3), and this looks like a homepage, 
-        # try to find "Shop", "Collection", or "Product" links and scrape them too.
-        if len(products) < 3:
-            logger.info("Few products found. attempting to discover product categories...")
+        # Crawl discovered categories (limit to 10)
+        for cat in categories[:10]:
+            cat_url = cat['url']
+            cat_title = cat['title']
             
-            nav_links = page.css('nav a, header a, .menu a, .navigation a, a')
-            discovery_urls = set()
+            if cat_url in all_seen:
+                continue
+            all_seen.add(cat_url)
             
-            keywords = ['product', 'collection', 'shop', 'store', 'catalogue', 'furniture', 'seating', 'table']
-            exclude = ['contact', 'about', 'login', 'cart', 'policy', 'terms', 'instagram', 'facebook']
-            
-            for link in nav_links:
-                href = link.css('::attr(href)').get()
-                if not href: continue
+            try:
+                logger.info(f"Crawling category: {cat_title} ({cat_url})")
+                cat_page = fetcher.fetch(cat_url)
                 
-                txt = link.css('::text').get() or ""
-                txt_lower = txt.lower()
-                href_lower = href.lower()
+                products, seen = extract_products_from_page(cat_page, base_url, brand_name, cat_title)
+                all_products.extend(products)
+                all_seen.update(seen)
+                logger.info(f"Found {len(products)} products in {cat_title}")
                 
-                # Check for keywords
-                if any(k in href_lower or k in txt_lower for k in keywords):
-                    # Check exclusions
-                    if not any(e in href_lower for e in exclude):
-                        full = urljoin(url, href)
-                        if full != url and full not in seen_urls:
-                            discovery_urls.add(full)
-            
-            # Limit discovery to top 5 most promising links
-            # Prefer 'collection' or 'product' in URL
-            sorted_urls = sorted(list(discovery_urls), key=lambda u: 1 if 'collection' in u or 'product' in u else 2)
-            discovery_queue = sorted_urls[:5]
-            
-            logger.info(f"Discovered {len(discovery_queue)} category pages to check: {discovery_queue}")
-            
-            # Scrape discovered pages
-            for d_url in discovery_queue:
-                try:
-                    logger.info(f"Scraping discovered category: {d_url}")
-                    # Reuse fetcher? Scrapling 0.2.x might restart browser. 
-                    # If overhead is high, we accept it for now to solve the user's issue.
-                    d_page = fetcher.fetch(d_url)
-                    
-                    # --- REPEAT EXTRACTION FOR NEW PAGE ---
-                    # (Refactoring this into a helper would be cleaner, but for now inline to avoid huge diff)
-                    
-                    # 1. JSON-LD on category page
-                    try:
-                        d_scripts = d_page.css('script[type="application/ld+json"]::text').getall()
-                        if not isinstance(d_scripts, list):
-                            d_single = d_page.css('script[type="application/ld+json"]::text').get()
-                            d_scripts = [d_single] if d_single else []
-
-                        for script in d_scripts:
-                            try:
-                                data = json.loads(script)
-                                items = data.get('@graph', [data]) if isinstance(data, dict) else (data if isinstance(data, list) else [])
-                                for item in items:
-                                    if not isinstance(item, dict): continue
-                                    item_type = item.get('@type', '')
-                                    if isinstance(item_type, list): item_type = item_type[0]
-                                    
-                                    if item_type == 'ItemList':
-                                        list_items = item.get('itemListElement', [])
-                                        for li in list_items:
-                                            if isinstance(li, dict):
-                                                product = li.get('item')
-                                                if product and isinstance(product, dict):
-                                                    p_name = product.get('name')
-                                                    p_url = product.get('url') or product.get('@id')
-                                                    p_img = product.get('image')
-                                                    if p_name and p_url:
-                                                        f_url = urljoin(d_url, p_url)
-                                                        f_img = urljoin(d_url, p_img) if p_img else ""
-                                                        if f_url not in seen_urls:
-                                                            products.append({"name": p_name, "link": f_url, "image": f_img, "source": "json-ld-cat"})
-                                                            seen_urls.add(f_url)
-                            except: continue
-                    except: pass
-                    
-                    # 2. Heuristic Link Extraction on category page
-                    d_links = d_page.css('a')
-                    for link in d_links:
-                        href = link.css('::attr(href)').get()
-                        if not href: continue
-                        f_url = urljoin(d_url, href)
-                        if f_url in seen_urls: continue
-                        
-                        imgs = link.css('img')
-                        
-                        # Recursive text
-                        text = None
+                # Check for pagination in category
+                pagination = find_pagination(cat_page, base_url)
+                for pg_url in pagination[:3]:  # Limit pagination depth
+                    if pg_url not in all_seen:
+                        all_seen.add(pg_url)
                         try:
-                            if hasattr(link, 'xpath'):
-                                all_text = link.xpath('.//text()').getall()
-                                text = " ".join([t.strip() for t in all_text if t.strip()])
-                            elif hasattr(link, 'css'):
-                                text_nodes = link.css('*::text').getall()
-                                text = " ".join([t.strip() for t in text_nodes if t.strip()])
-                        except: pass
-                        
-                        if not text:
-                             text = link.css('::text').get()
-                             if not text and imgs: text = imgs.css('::attr(alt)').get()
-                        
-                        if not text: continue
-                        text = text.strip()
-                        
-                        is_p = '/product/' in f_url or '/item/' in f_url
-                        if is_p:
-                            if len(text) < 2: continue
-                        else:
-                            if len(text) < 3 or len(text) > 300: continue
+                            logger.info(f"Following pagination: {pg_url}")
+                            pg_page = fetcher.fetch(pg_url)
+                            products, seen = extract_products_from_page(pg_page, base_url, brand_name, cat_title)
+                            all_products.extend(products)
+                            all_seen.update(seen)
+                            logger.info(f"Found {len(products)} products on page")
+                        except Exception as e:
+                            logger.warning(f"Pagination error: {e}")
+                            continue
                             
-                        low = text.lower()
-                        if any(x == low for x in ['menu', 'home', 'login', 'cart']): continue
-                        if not is_p and any(x in low for x in ['instagram', 'facebook', 'policy']): continue
-                        
-                        if imgs:
-                            img_src = imgs.css('::attr(src)').get() or imgs.css('::attr(data-src)').get() or imgs.css('::attr(srcset)').get()
-                            if img_src:
-                                if ',' in img_src: img_src = img_src.split(',')[0].strip().split(' ')[0]
-                                f_img = urljoin(d_url, img_src)
-                                products.append({"name": text, "link": f_url, "image": f_img, "source": "discovery"})
-                                seen_urls.add(f_url)
-                                
-                except Exception as e:
-                    logger.warning(f"Error scraping discovered url {d_url}: {e}")
-
+            except Exception as e:
+                logger.warning(f"Error crawling category {cat_url}: {e}")
+                continue
+        
+        # === DEDUPLICATE ===
+        unique_products = []
+        seen_keys = set()
+        for p in all_products:
+            key = f"{p['name']}|{p['link']}".lower()
+            if key not in seen_keys and is_valid_product_image(p.get('image', '')):
+                seen_keys.add(key)
+                unique_products.append(p)
+        
+        logger.info(f"Total unique products: {len(unique_products)}")
+        
         result = {
-            "products": products,
+            "products": unique_products,
             "brandInfo": {
                 "name": brand_name,
                 "logo": logo
@@ -442,5 +460,6 @@ def scrape_url(url):
         
     except Exception as e:
         logger.error(f"Extraction error: {e}")
-        # Re-raise to be handled by API caller
+        import traceback
+        logger.error(traceback.format_exc())
         raise e
