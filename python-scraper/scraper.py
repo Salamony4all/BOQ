@@ -128,7 +128,37 @@ def scrape_url(url):
             text = link.css('::text').get()
             if not text:
                 # deeper check?
-                text = "".join(link.css('::text').getall())
+                # link.css('::text') returns a Selectors object (list-like).
+                # To get all text nodes, we should probably iterate or check docs.
+                # However, Scrapling docs say .getall() is on the Selector object.
+                # BUT the error saying 'Selectors' object has no attribute 'getall' means
+                # link.css('::text') returns a 'Selectors' object which MIGHT behave like a list?
+                # or maybe it's just a list of Selector objects?
+                
+                # If 'link.css(...)' returns a list, we can't call .getall() on the list.
+                # We should loop.
+                
+                # Standard Parcel/Scrapling pattern:
+                # page.css('p::text').getall() -> returns list of strings.
+                
+                # So `link` is a Selector/Element.
+                # `link.css('::text')` -> returns Selectors (list wrapper).
+                
+                # Let's try standard list comprehension if it's iterable:
+                try:
+                    text_nodes = link.css('::text')
+                    # If it's a list/Selectors object
+                    if hasattr(text_nodes, 'getall'):
+                        text = "".join(text_nodes.getall())
+                    elif isinstance(text_nodes, list):
+                        # It's a list of strings or selectors?
+                        # Usually ::text returns strings directly in some parsers, but in Parcel it might return objects.
+                        # safe fallback:
+                        text = "".join([str(t) for t in text_nodes])
+                    else:
+                        text = str(text_nodes)
+                except:
+                   pass
             
             if not text:
                 continue
