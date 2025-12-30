@@ -275,6 +275,21 @@
   font-size: 0.75rem !important;
 }
 
+.miniDeleteBtn {
+  background: #ef4444 !important;
+  padding: 0.4rem 0.8rem !important;
+  font-size: 0.75rem !important;
+}
+
+.miniDeleteBtn:hover {
+  background: #dc2626 !important;
+}
+
+.miniDeleteBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .emptyList {
   padding: 2rem;
   text-align: center;

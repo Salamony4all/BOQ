@@ -15,6 +15,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
     // DB Management State
     const [allBrands, setAllBrands] = useState([]);
     const [importingId, setImportingId] = useState(null);
+    const [deletingId, setDeletingId] = useState(null);
     const fileInputRef = useRef(null);
 
     // Global scraping context
@@ -164,6 +165,36 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
         }
     };
 
+    const handleDeleteBrand = async (brand) => {
+        const confirmed = window.confirm(
+            `Are you sure you want to delete "${brand.name}"?\n\nThis will permanently remove the brand and all ${brand.products?.length || 0} products. This action cannot be undone.`
+        );
+
+        if (!confirmed) return;
+
+        setDeletingId(brand.id);
+
+        try {
+            const res = await fetch(`${API_BASE}/api/brands/${brand.id}`, {
+                method: 'DELETE'
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                alert(`"${brand.name}" has been deleted successfully.`);
+                fetchBrands();
+                if (onBrandUpdated) onBrandUpdated();
+            } else {
+                throw new Error(data.error || 'Delete failed');
+            }
+        } catch (e) {
+            console.error('Delete error:', e);
+            alert('Failed to delete brand: ' + e.message);
+        } finally {
+            setDeletingId(null);
+        }
+    };
+
     return (
         <div className={styles.overlay} onClick={onClose}>
             <div className={styles.modal} onClick={e => e.stopPropagation()}>
@@ -256,6 +287,14 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
                                                 title="Upload Excel"
                                             >
                                                 📤 {(importingId === brand.id) ? '...' : 'Import'}
+                                            </button>
+                                            <button
+                                                className={`${styles.actionBtn} ${styles.miniDeleteBtn}`}
+                                                onClick={() => handleDeleteBrand(brand)}
+                                                title="Delete Brand"
+                                                disabled={deletingId === brand.id}
+                                            >
+                                                🗑️ {(deletingId === brand.id) ? '...' : 'Delete'}
                                             </button>
                                         </div>
                                     </div>
