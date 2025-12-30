@@ -200,6 +200,104 @@ def scrape_url(url):
                     })
                     seen_urls.add(full_url)
         
+        # --- Universal Strategy 2: JSON-LD Extraction ---
+        try:
+            json_ld_scripts = page.css('script[type="application/ld+json"]::text').getall()
+            if not isinstance(json_ld_scripts, list):
+                # Fallback if getall not supported/returned strict
+                 json_ld_scripts = []
+                 single = page.css('script[type="application/ld+json"]::text').get()
+                 if single: json_ld_scripts.append(single)
+
+            for script in json_ld_scripts:
+                try:
+                    data = json.loads(script)
+                    # Handle graph
+                    items = data.get('@graph', [data]) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                    
+                    for item in items:
+                        if not isinstance(item, dict): continue
+                        
+                        item_type = item.get('@type', '')
+                        if isinstance(item_type, list): item_type = item_type[0] # simplification
+                        
+                        # Case 1: Single Product on page
+                        if item_type == 'Product':
+                            p_name = item.get('name')
+                            p_img = item.get('image')
+                            if isinstance(p_img, list): p_img = p_img[0]
+                            elif isinstance(p_img, dict): p_img = p_img.get('url')
+                            
+                            p_url = item.get('url') or url # Default to current page if not valid
+                            
+                            if p_name and p_img:
+                                full_p_url = urljoin(url, p_url)
+                                full_p_img = urljoin(url, p_img)
+                                
+                                if full_p_url not in seen_urls:
+                                    products.append({
+                                        "name": p_name,
+                                        "link": full_p_url,
+                                        "image": full_p_img,
+                                        "source": "json-ld"
+                                    })
+                                    seen_urls.add(full_p_url)
+                                    
+                        # Case 2: ItemList (Category/Shop page)
+                        elif item_type == 'ItemList':
+                            list_items = item.get('itemListElement', [])
+                            for li in list_items:
+                                # Sometimes li is just a string, usually a dict
+                                if isinstance(li, dict):
+                                    # Config 1: li has 'item' which is the product
+                                    product = li.get('item')
+                                    if product and isinstance(product, dict):
+                                        p_name = product.get('name')
+                                        p_url = product.get('url') or product.get('@id')
+                                        p_img = product.get('image')
+                                        
+                                        if p_name and p_url:
+                                            full_p_url = urljoin(url, p_url)
+                                            full_p_img = urljoin(url, p_img) if p_img else ""
+                                            
+                                            if full_p_url not in seen_urls:
+                                                products.append({
+                                                    "name": p_name,
+                                                    "link": full_p_url,
+                                                    "image": full_p_img,
+                                                    "source": "json-ld-list"
+                                                })
+                                                seen_urls.add(full_p_url)
+                except:
+                    continue
+        except Exception as e:
+            logger.warning(f"JSON-LD error: {e}")
+
+        # --- Universal Strategy 3: Meta Tag / Open Graph Extraction ---
+        # Useful if the page IS a product page
+        try:
+            og_type = page.css('meta[property="og:type"]::attr(content)').get()
+            if og_type == 'product':
+                p_name = page.css('meta[property="og:title"]::attr(content)').get()
+                p_img = page.css('meta[property="og:image"]::attr(content)').get()
+                p_url = page.css('meta[property="og:url"]::attr(content)').get() or url
+                
+                if p_name and p_img:
+                    full_p_url = urljoin(url, p_url)
+                    full_p_img = urljoin(url, p_img)
+                    
+                    if full_p_url not in seen_urls:
+                        products.append({
+                            "name": p_name,
+                            "link": full_p_url,
+                            "image": full_p_img,
+                            "source": "og-meta"
+                        })
+                        seen_urls.add(full_p_url)
+        except:
+            pass
+
+        
         logger.info(f"Extracted {len(products)} potential products.")
         
         result = {
