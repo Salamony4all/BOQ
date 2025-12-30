@@ -659,13 +659,41 @@ def scrape_url(url):
                 continue
         
         # === DEDUPLICATE ===
-        unique_products = []
-        seen_keys = set()
+        # === DEDUPLICATE WITH CATEGORY PRIORITY ===
+        # Use a dict to store the best version of each product
+        unique_map = {}
+        
         for p in all_products:
-            key = f"{p['model']}|{p['productUrl']}".lower()
-            if key not in seen_keys and is_valid_product_image(p.get('imageUrl', '')):
-                seen_keys.add(key)
-                unique_products.append(p)
+            key = f"{p['productUrl']}".lower() # Use URL as unique key
+            
+            # Check if image is valid
+            if not is_valid_product_image(p.get('imageUrl', '')):
+                continue
+                
+            is_better = False
+            if key not in unique_map:
+                is_better = True
+            else:
+                existing = unique_map[key]
+                # Priority rules:
+                # 1. Prefer specific subcategory over same-as-main (e.g. Chairs > Executive vs Chairs > Chairs)
+                existing_is_specific = existing['mainCategory'] != existing['subCategory']
+                new_is_specific = p['mainCategory'] != p['subCategory']
+                
+                # 2. Prefer non-generic categories over "Homepage", "Products", "General"
+                generic_cats = ['homepage', 'products', 'general', 'select category']
+                existing_is_generic = existing['mainCategory'].lower() in generic_cats
+                new_is_generic = p['mainCategory'].lower() in generic_cats
+                
+                if new_is_specific and not existing_is_specific:
+                    is_better = True
+                elif not new_is_generic and existing_is_generic:
+                    is_better = True
+            
+            if is_better:
+                unique_map[key] = p
+                
+        unique_products = list(unique_map.values())
         
         logger.info(f"Total unique products: {len(unique_products)}")
         
