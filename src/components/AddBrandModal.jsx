@@ -60,9 +60,10 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
         onClose();
 
         try {
-            const endpoint = scrapingMethod === 'ai'
-                ? `${API_BASE}/api/scrape-ai`
-                : `${API_BASE}/api/scrape-brand`;
+            let endpoint;
+            if (scrapingMethod === 'ai') endpoint = `${API_BASE}/api/scrape-ai`;
+            else if (scrapingMethod === 'scrapling') endpoint = `${API_BASE}/api/scrape-scrapling`;
+            else endpoint = `${API_BASE}/api/scrape-brand`;
 
             const res = await fetch(endpoint, {
                 method: 'POST',
@@ -208,6 +209,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
                         <label className={styles.label}>Scraping Method</label>
                         <select className={styles.select} value={scrapingMethod} onChange={e => setScrapingMethod(e.target.value)}>
                             <option value="ai">🤖 AI Scraper (Intelligent extraction for any site)</option>
+                            <option value="scrapling">🧠 Scrapling (Undetectable Python Engine)</option>
                             <option value="requests">🔧 Specialized Scraper (Optimized for Architonic)</option>
                         </select>
                     </div>

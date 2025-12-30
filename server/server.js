@@ -17,6 +17,7 @@ import BrowserlessScraper from './browserlessScraper.js';
 import ScrapingBeeScraper from './scrapingBeeScraper.js';
 import { ExcelDbManager } from './excelManager.js';
 import { brandStorage } from './storageProvider.js';
+import { spawn } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -687,6 +688,153 @@ app.post('/api/scrape-ai', async (req, res) => {
   } catch (error) {
     console.error('AI Scraping failed:', error);
     res.status(500).json({ error: 'AI Scraping failed', details: error.message });
+  }
+});
+
+// --- Scrapling Endpoint ---
+app.post('/api/scrape-scrapling', async (req, res) => {
+  try {
+    const { url, name, budgetTier = 'mid', origin = 'UNKNOWN' } = req.body;
+
+    // Check if we have an external Python Service configured (Railway/Render)
+    const pythonServiceUrl = process.env.PYTHON_SERVICE_URL;
+
+    // If no external service AND running on Vercel, block it.
+    if (!pythonServiceUrl && process.env.VERCEL === '1') {
+      return res.status(503).json({
+        error: 'Feature Unavailable on Cloud',
+        details: 'Scrapling requires a local env or a separate Python microservice. Please configure PYTHON_SERVICE_URL or run locally.'
+      });
+    }
+
+    if (!url) return res.status(400).json({ error: 'URL is required' });
+
+    const taskId = `scrapling_${Date.now()}`;
+    tasks.set(taskId, { id: taskId, status: 'processing', progress: 10, stage: 'Starting Scrapling engine...', brandName: name || 'Detecting...' });
+
+    // Run in background
+    (async () => {
+      try {
+        if (pythonServiceUrl) {
+          // --- Mode A: Call External Python Service ---
+          console.log(`[Scrapling] Delegating to external service: ${pythonServiceUrl}`);
+          const serviceRes = await axios.post(`${pythonServiceUrl}/scrape`, { url });
+          const result = serviceRes.data;
+
+          // Process Result (Shared Logic)
+          const products = result.products || [];
+          const brandNameFound = name || result.brandInfo?.name || 'Unknown Brand';
+          const brandLogo = result.brandInfo?.logo || '';
+
+          const id = Date.now();
+          const newBrand = {
+            id,
+            name: brandNameFound,
+            url,
+            origin,
+            budgetTier,
+            logo: brandLogo,
+            products,
+            createdAt: new Date(),
+            scrapedWith: 'Scrapling-microservice'
+          };
+
+          await brandStorage.saveBrand(newBrand);
+          tasks.set(taskId, {
+            id: taskId,
+            status: 'completed',
+            progress: 100,
+            stage: 'Harvest Complete!',
+            brand: newBrand,
+            productCount: products.length
+          });
+
+        } else {
+          // --- Mode B: Spawn Local Process ---
+          console.log(`[Scrapling] Starting local python process for ${url}`);
+          const scriptPath = path.join(__dirname, 'scrapling_script.py');
+          // continue with spawn...
+
+          const pythonProcess = spawn('python', [scriptPath, url]);
+
+          let stdoutData = '';
+          let stderrData = '';
+
+          pythonProcess.stdout.on('data', (data) => {
+            stdoutData += data.toString();
+          });
+
+          pythonProcess.stderr.on('data', (data) => {
+            stderrData += data.toString();
+            console.error(`[Scrapling Stderr]: ${data}`);
+          });
+
+          pythonProcess.on('close', async (code) => {
+            if (code !== 0) {
+              console.error(`[Scrapling] Process exited with code ${code}`);
+              tasks.set(taskId, { id: taskId, status: 'failed', error: `Python script failed with code ${code}. Stderr: ${stderrData}` });
+              return;
+            }
+
+            try {
+              // Parse JSON output
+              // Basic cleanup if logs leaked to stdout
+              const lastLine = stdoutData.trim().split('\n').pop();
+              const result = JSON.parse(lastLine);
+
+              if (result.error) {
+                throw new Error(result.error);
+              }
+
+              const products = result.products || [];
+              const brandNameFound = name || result.brandInfo?.name || 'Unknown Brand';
+              const brandLogo = result.brandInfo?.logo || '';
+
+              const id = Date.now();
+              const newBrand = {
+                id,
+                name: brandNameFound,
+                url,
+                origin,
+                budgetTier,
+                logo: brandLogo,
+                products,
+                createdAt: new Date(),
+                scrapedWith: 'Scrapling-Python'
+              };
+
+              await brandStorage.saveBrand(newBrand);
+              tasks.set(taskId, {
+                id: taskId,
+                status: 'completed',
+                progress: 100,
+                stage: 'Harvest Complete!',
+                brand: newBrand,
+                productCount: products.length
+              });
+
+            } catch (e) {
+              console.error('[Scrapling] Parse error:', e);
+              tasks.set(taskId, { id: taskId, status: 'failed', error: 'Failed to parse Scrapling output: ' + e.message });
+            }
+          });
+
+        }
+      } catch (error) {
+        console.error('Background Scrapling failed:', error);
+        tasks.set(taskId, { id: taskId, status: 'failed', error: error.message });
+      }
+    })();
+
+    res.json({
+      success: true,
+      message: 'Scrapling started.',
+      taskId
+    });
+
+  } catch (error) {
+    console.error('Scrapling API failed:', error);
+    res.status(500).json({ error: 'Scrapling failed', details: error.message });
   }
 });
 
