@@ -6,6 +6,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -13,14 +14,16 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir playwright
 
-# Install playwright browsers
+# Install browser binaries and dependencies
+# 1. Playwright Chromium
 RUN playwright install chromium
 RUN playwright install-deps chromium
+
+# 2. Camoufox: Fetch binary. (Required for Scrapling import)
+RUN python -m camoufox fetch
 
 COPY . .
 
 # Expose port (railway sets PORT env var)
-# CMD uses the $PORT env var if uvicorn supports it in shell form, 
-# but usually list form ["uvicorn", ...] doesn't resolve vars.
-# We will use sh -c 
+# CMD uses the $PORT env var if uvicorn supports it in shell form
 CMD sh -c "uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"

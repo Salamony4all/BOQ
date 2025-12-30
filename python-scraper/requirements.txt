@@ -5,3 +5,5 @@ curl_cffi
 playwright
 patchright
 requests
+camoufox
+msgspec
