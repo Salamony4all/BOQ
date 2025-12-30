@@ -22,9 +22,11 @@ def scrape_url(url):
         logger.info(f"Starting extraction for {url}")
         
         # Use DynamicFetcher
-        # Headless=True is default, but explicit is good.
-        fetcher = DynamicFetcher(headless=True)
-        page = fetcher.fetch(url)
+        fetcher = DynamicFetcher()
+        # Newer Scrapling versions moved configuration to a method or argument of fetch?
+        # Or maybe the deprecated arg 'headless' in init caused the warning/error.
+        # Let's simple try without arguments first (default is usually headless anyway).
+        page = fetcher.fetch(url, headless=True)
         
         # Brand Info
         title = page.css('title::text').get() or "Unknown Brand"
