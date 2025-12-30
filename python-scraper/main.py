@@ -17,7 +17,7 @@ class ScrapeRequest(BaseModel):
 async def scrape_endpoint(req: ScrapeRequest):
     logger.info(f"Received scrape request for: {req.url}")
     try:
-        data = scrape_url(req.url)
+        data = await scrape_url(req.url)
         return data
     except Exception as e:
         logger.error(f"Scrape failed: {e}")

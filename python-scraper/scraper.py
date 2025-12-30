@@ -17,16 +17,40 @@ except ImportError as e:
     logger.error(traceback.format_exc())
     DynamicFetcher = None
 
-def scrape_url(url):
     try:
         logger.info(f"Starting extraction for {url}")
         
-        # Use DynamicFetcher
-        fetcher = DynamicFetcher()
-        # Newer Scrapling versions moved configuration to a method or argument of fetch?
-        # Or maybe the deprecated arg 'headless' in init caused the warning/error.
-        # Let's simple try without arguments first (default is usually headless anyway).
-        page = fetcher.fetch(url, headless=True)
+        # Scrapling's DynamicFetcher (sync) inside FastAPI (async) causes:
+        # "Playwright Sync API inside the asyncio loop. Please use the Async API"
+        # Since we are in a lightweight service, usually we can just use AsyncFetcher 
+        # OR run the sync fetcher in a thread.
+        # Let's try switching to AsyncFether? 
+        # But for stability with camoufox, some docs suggest sync. 
+        # Simplest fix: Run the logic in a thread so it doesn't block the async loop.
+        # But we need to refactor scrape_url to be sync blocking, and call it via run_in_executor in main.py?
+        
+        # Actually, let's keep scrape_url sync, but ensure we don't start Playwright Sync inside the async event loop thread directly?
+        # Actually, FastAPI runs endpoints in a threadpool if they are defined as 'def', 
+        # and in the main loop if defined as 'async def'.
+        # Our main.py has `async def scrape_endpoint`.
+        # So we are IN the loop. Calling sync playwright here crashes.
+        
+        # We should use `AsyncFetcher`!
+        from scrapling import AsyncFetcher
+        
+        # We need to await it, so scrape_url must be async.
+        # Refactoring to async.
+        pass
+    except:
+        pass
+
+async def scrape_url(url):
+    try:
+        logger.info(f"Starting extraction for {url}")
+        from scrapling import AsyncFetcher
+        
+        fetcher = AsyncFetcher() 
+        page = await fetcher.fetch(url, headless=True)
         
         # Brand Info
         title = page.css('title::text').get() or "Unknown Brand"
