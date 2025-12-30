@@ -29,13 +29,13 @@ def is_valid_product_image(url):
     return not any(term in lower for term in IMAGE_EXCLUDE)
 
 
-def create_product(name, image_url, product_url, brand_name, category='General'):
+def create_product(name, image_url, product_url, brand_name, main_category='General', sub_category=None):
     """
     Create a product dict in the format expected by the UI.
     """
     return {
-        "mainCategory": category,
-        "subCategory": category,
+        "mainCategory": main_category,
+        "subCategory": sub_category or main_category,
         "family": brand_name,
         "model": name,
         "description": name,
@@ -45,7 +45,7 @@ def create_product(name, image_url, product_url, brand_name, category='General')
     }
 
 
-def extract_products_from_page(page, base_url, brand_name, category='General'):
+def extract_products_from_page(page, base_url, brand_name, main_category='General', sub_category=None):
     """
     Extract products from a page using multiple strategies.
     Mirrors the approach from structureScraper.js.
@@ -123,7 +123,8 @@ def extract_products_from_page(page, base_url, brand_name, category='General'):
                             image_url=full_img,
                             product_url=full_url,
                             brand_name=brand_name,
-                            category=category
+                            main_category=main_category,
+                            sub_category=sub_category
                         ))
                         
                     except Exception as e:
@@ -196,7 +197,8 @@ def extract_products_from_page(page, base_url, brand_name, category='General'):
                         image_url=full_img,
                         product_url=full_url,
                         brand_name=brand_name,
-                        category=category
+                        main_category=main_category,
+                        sub_category=sub_category
                     ))
                     
                 except:
@@ -245,7 +247,8 @@ def extract_products_from_page(page, base_url, brand_name, category='General'):
                                     image_url=full_img,
                                     product_url=full_url,
                                     brand_name=brand_name,
-                                    category=category
+                                    main_category=main_category,
+                                    sub_category=sub_category
                                 ))
                                 seen.add(full_url)
                                 seen.add(p_name.lower())
@@ -269,7 +272,8 @@ def extract_products_from_page(page, base_url, brand_name, category='General'):
                                                 image_url=full_img,
                                                 product_url=full_url,
                                                 brand_name=brand_name,
-                                                category=category
+                                                main_category=main_category,
+                                                sub_category=sub_category
                                             ))
                                             seen.add(full_url)
             except:
@@ -283,56 +287,149 @@ def extract_products_from_page(page, base_url, brand_name, category='General'):
 def discover_category_pages(page, base_url):
     """
     Find category/collection pages to crawl.
-    Mirrors discoverHierarchyLinks from structureScraper.js.
+    Detects hierarchical navigation menus (main categories with subcategories).
+    Returns list of {url, title, mainCategory, subCategory}
     """
     categories = []
     seen = set()
     
     try:
-        # Look in navigation and sidebar
-        nav_links = page.css('nav a, header a, .menu a, .navigation a, .sidebar a, a')
+        # === STRATEGY 1: Detect WooCommerce/WordPress menu structure ===
+        # Look for nav menus with nested ul/li structure
+        menu_selectors = [
+            'nav ul.menu > li',
+            'nav ul.nav-menu > li', 
+            '.primary-menu > li',
+            '#primary-menu > li',
+            '.main-menu > li',
+            'header nav > ul > li',
+            '.navigation > ul > li',
+            'ul.menu > li.menu-item'
+        ]
         
-        for link in nav_links:
+        for selector in menu_selectors:
             try:
-                href = link.css('::attr(href)').get()
-                if not href or href == '#' or href.startswith('javascript'):
+                menu_items = page.css(selector)
+                if not menu_items or len(menu_items) == 0:
                     continue
                 
-                text = link.css('::text').get() or ""
-                text = text.strip()
+                logger.info(f"Found {len(menu_items)} menu items with selector: {selector}")
                 
-                full_url = urljoin(base_url, href)
-                
-                # Must be same domain
-                if not full_url.startswith(base_url):
-                    continue
-                
-                if full_url in seen or full_url == base_url:
-                    continue
-                
-                href_lower = href.lower()
-                text_lower = text.lower()
-                
-                # Skip excluded URLs
-                if any(ex in href_lower for ex in EXCLUDE_KEYWORDS):
-                    continue
-                
-                # Check for product-related keywords
-                is_product_link = any(kw in href_lower or kw in text_lower for kw in PRODUCT_KEYWORDS)
-                
-                if is_product_link and len(text) > 2 and len(text) < 50:
-                    seen.add(full_url)
-                    categories.append({
-                        "url": full_url,
-                        "title": text if text else "Products"
-                    })
+                for item in menu_items:
+                    try:
+                        # Get main category link
+                        main_link = item.css('> a')
+                        if not main_link:
+                            main_link = item.css('a')
+                        if not main_link:
+                            continue
+                        
+                        main_href = main_link.css('::attr(href)').get()
+                        main_text = main_link.css('::text').get() or ""
+                        main_text = main_text.strip()
+                        
+                        # Skip excluded
+                        if not main_text or len(main_text) < 2:
+                            continue
+                        if any(ex in main_text.lower() for ex in EXCLUDE_KEYWORDS):
+                            continue
+                        
+                        # Check for submenu (dropdown items)
+                        submenu_items = item.css('ul.sub-menu > li > a, ul.dropdown-menu > li > a, .sub-menu a, .dropdown a')
+                        
+                        if submenu_items and len(submenu_items) > 0:
+                            # Has subcategories - add each as separate entry
+                            for sub_link in submenu_items:
+                                try:
+                                    sub_href = sub_link.css('::attr(href)').get()
+                                    sub_text = sub_link.css('::text').get() or ""
+                                    sub_text = sub_text.strip()
+                                    
+                                    if not sub_href or sub_href == '#' or not sub_text:
+                                        continue
+                                    if any(ex in sub_text.lower() for ex in EXCLUDE_KEYWORDS):
+                                        continue
+                                    
+                                    full_url = urljoin(base_url, sub_href)
+                                    
+                                    if full_url not in seen and full_url != base_url:
+                                        seen.add(full_url)
+                                        categories.append({
+                                            "url": full_url,
+                                            "title": sub_text,
+                                            "mainCategory": main_text,
+                                            "subCategory": sub_text
+                                        })
+                                except:
+                                    continue
+                        else:
+                            # No submenu - add as main category only
+                            if main_href and main_href != '#' and not main_href.startswith('javascript'):
+                                full_url = urljoin(base_url, main_href)
+                                if full_url not in seen and full_url != base_url:
+                                    seen.add(full_url)
+                                    categories.append({
+                                        "url": full_url,
+                                        "title": main_text,
+                                        "mainCategory": main_text,
+                                        "subCategory": main_text
+                                    })
+                    except:
+                        continue
+                        
+                # If we found categories with this selector, stop trying others
+                if len(categories) > 0:
+                    break
                     
             except:
                 continue
+        
+        # === STRATEGY 2: Fallback to flat link discovery ===
+        if len(categories) == 0:
+            logger.info("No hierarchical menu found, falling back to flat link discovery")
+            nav_links = page.css('nav a, header a, .menu a, .navigation a, a')
+            
+            for link in nav_links:
+                try:
+                    href = link.css('::attr(href)').get()
+                    if not href or href == '#' or href.startswith('javascript'):
+                        continue
+                    
+                    text = link.css('::text').get() or ""
+                    text = text.strip()
+                    
+                    full_url = urljoin(base_url, href)
+                    
+                    if not full_url.startswith(base_url):
+                        continue
+                    
+                    if full_url in seen or full_url == base_url:
+                        continue
+                    
+                    href_lower = href.lower()
+                    text_lower = text.lower()
+                    
+                    if any(ex in href_lower for ex in EXCLUDE_KEYWORDS):
+                        continue
+                    
+                    is_product_link = any(kw in href_lower or kw in text_lower for kw in PRODUCT_KEYWORDS)
+                    
+                    if is_product_link and len(text) > 2 and len(text) < 50:
+                        seen.add(full_url)
+                        categories.append({
+                            "url": full_url,
+                            "title": text if text else "Products",
+                            "mainCategory": text if text else "Products",
+                            "subCategory": text if text else "Products"
+                        })
+                        
+                except:
+                    continue
                 
     except Exception as e:
         logger.warning(f"Category discovery error: {e}")
     
+    logger.info(f"Discovered {len(categories)} category pages")
     return categories
 
 
@@ -396,7 +493,7 @@ def scrape_url(url):
         
         # === PHASE 1: Extract from current page ===
         logger.info("Phase 1: Extracting from main page...")
-        products, seen = extract_products_from_page(page, base_url, brand_name, 'Homepage')
+        products, seen = extract_products_from_page(page, base_url, brand_name, 'Homepage', 'Homepage')
         all_products.extend(products)
         all_seen.update(seen)
         logger.info(f"Found {len(products)} products on main page")
@@ -411,37 +508,45 @@ def scrape_url(url):
             for path in common_paths:
                 try:
                     test_url = urljoin(base_url, path)
-                    categories.append({"url": test_url, "title": path.strip('/')})
+                    path_name = path.strip('/').title()
+                    categories.append({
+                        "url": test_url, 
+                        "title": path_name,
+                        "mainCategory": path_name,
+                        "subCategory": path_name
+                    })
                 except:
                     continue
         
-        # Crawl discovered categories (limit to 10)
-        for cat in categories[:10]:
+        # Crawl discovered categories (limit to 30 for better coverage)
+        for cat in categories[:30]:
             cat_url = cat['url']
-            cat_title = cat['title']
+            cat_title = cat.get('title', 'Products')
+            main_cat = cat.get('mainCategory', cat_title)
+            sub_cat = cat.get('subCategory', cat_title)
             
             if cat_url in all_seen:
                 continue
             all_seen.add(cat_url)
             
             try:
-                logger.info(f"Crawling category: {cat_title} ({cat_url})")
+                logger.info(f"Crawling category: {main_cat} > {sub_cat} ({cat_url})")
                 cat_page = fetcher.fetch(cat_url)
                 
-                products, seen = extract_products_from_page(cat_page, base_url, brand_name, cat_title)
+                products, seen = extract_products_from_page(cat_page, base_url, brand_name, main_cat, sub_cat)
                 all_products.extend(products)
                 all_seen.update(seen)
-                logger.info(f"Found {len(products)} products in {cat_title}")
+                logger.info(f"Found {len(products)} products in {sub_cat}")
                 
                 # Check for pagination in category
                 pagination = find_pagination(cat_page, base_url)
-                for pg_url in pagination[:3]:  # Limit pagination depth
+                for pg_url in pagination[:5]:  # Limit pagination depth
                     if pg_url not in all_seen:
                         all_seen.add(pg_url)
                         try:
                             logger.info(f"Following pagination: {pg_url}")
                             pg_page = fetcher.fetch(pg_url)
-                            products, seen = extract_products_from_page(pg_page, base_url, brand_name, cat_title)
+                            products, seen = extract_products_from_page(pg_page, base_url, brand_name, main_cat, sub_cat)
                             all_products.extend(products)
                             all_seen.update(seen)
                             logger.info(f"Found {len(products)} products on page")
