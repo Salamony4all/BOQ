@@ -125,22 +125,28 @@ def scrape_url(url):
             imgs = link.css('img')
             
             # Check for text (name)
-            # Try to get text from the link itself or nested
+            # Use recursive text extraction (xpath .//text()) to capture text in h2, span, etc.
             text = None
             try:
-                # Scrapling/Parcel: get() returns first match string. 
-                # We want *all* text concatenated potentially.
-                # But let's try just the first significant text.
-                text_nodes = link.css('::text')
-                # If we can get a list of strings:
-                if hasattr(text_nodes, 'getall'):
-                    all_text = text_nodes.getall()
-                    text = " ".join([t.strip() for t in all_text if t.strip()])
-                else: 
-                     # Fallback 1
-                    text = link.css('::text').get()
+                # Try XPath for recursive text
+                if hasattr(link, 'xpath'):
+                    all_text_nodes = link.xpath('.//text()').getall()
+                    text = " ".join([t.strip() for t in all_text_nodes if t.strip()])
+                else:
+                    # Fallback to CSS descendants
+                    # Note: ' *::text' selects all text nodes of all descendants
+                    text_nodes = link.css('*::text') 
+                    if hasattr(text_nodes, 'getall'):
+                        text = " ".join([t.strip() for t in text_nodes.getall() if t.strip()])
             except:
                 pass
+            
+            # Fallback to direct text if recursive failed or wasn't supported
+            if not text:
+                 try:
+                    text = link.css('::text').get()
+                 except: 
+                    pass
             
             # If no text found in <a>, maybe it's usually adjacent? 
             # But let's stick to containment for now.
@@ -153,11 +159,23 @@ def scrape_url(url):
                 continue
                 
             text = text.strip()
-            if len(text) < 3 or len(text) > 300: # Increased max length slightly
-                continue
+            
+            # Heuristic: Is this a product URL?
+            is_product_url = '/product/' in full_url or '/item/' in full_url or '/shop/' in full_url
+            
+            # Relaxed length check if it looks like a product URL
+            if is_product_url:
+                 if len(text) < 2: # Very short
+                     continue
+            else:
+                 if len(text) < 3 or len(text) > 300:
+                     continue
             
             # Filter out common UI elements
-            if any(x in text.lower() for x in ['menu', 'home', 'about', 'contact', 'search', 'cart', 'login', 'instagram', 'facebook']):
+            low_text = text.lower()
+            if any(x == low_text for x in ['menu', 'home', 'login', 'cart']): # Exact match for short words
+                continue
+            if not is_product_url and any(x in low_text for x in ['instagram', 'facebook', 'twitter', 'policy', 'terms']):
                 continue
 
             if imgs:
