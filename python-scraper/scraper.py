@@ -108,7 +108,7 @@ def scrape_url(url):
             # Safe way in Scrapling/Parcel: link.css('::attr(href)').get()
             
             href = link.css('::attr(href)').get()
-            # Fallback if link is actually an lxml element (shouldn't be if we iterate page.css)
+            # Fallback
             if href is None and hasattr(link, 'attrib'):
                 href = link.attrib.get('href')
             
@@ -121,55 +121,56 @@ def scrape_url(url):
                 continue
             
             # Check for image inside
-            # link is a Selector/Element
+            # link is a Selector/Element. `img` selector inside `a`
             imgs = link.css('img')
             
             # Check for text (name)
-            text = link.css('::text').get()
+            # Try to get text from the link itself or nested
+            text = None
+            try:
+                # Scrapling/Parcel: get() returns first match string. 
+                # We want *all* text concatenated potentially.
+                # But let's try just the first significant text.
+                text_nodes = link.css('::text')
+                # If we can get a list of strings:
+                if hasattr(text_nodes, 'getall'):
+                    all_text = text_nodes.getall()
+                    text = " ".join([t.strip() for t in all_text if t.strip()])
+                else: 
+                     # Fallback 1
+                    text = link.css('::text').get()
+            except:
+                pass
+            
+            # If no text found in <a>, maybe it's usually adjacent? 
+            # But let's stick to containment for now.
             if not text:
-                # deeper check?
-                # link.css('::text') returns a Selectors object (list-like).
-                # To get all text nodes, we should probably iterate or check docs.
-                # However, Scrapling docs say .getall() is on the Selector object.
-                # BUT the error saying 'Selectors' object has no attribute 'getall' means
-                # link.css('::text') returns a 'Selectors' object which MIGHT behave like a list?
-                # or maybe it's just a list of Selector objects?
-                
-                # If 'link.css(...)' returns a list, we can't call .getall() on the list.
-                # We should loop.
-                
-                # Standard Parcel/Scrapling pattern:
-                # page.css('p::text').getall() -> returns list of strings.
-                
-                # So `link` is a Selector/Element.
-                # `link.css('::text')` -> returns Selectors (list wrapper).
-                
-                # Let's try standard list comprehension if it's iterable:
-                try:
-                    text_nodes = link.css('::text')
-                    # If it's a list/Selectors object
-                    if hasattr(text_nodes, 'getall'):
-                        text = "".join(text_nodes.getall())
-                    elif isinstance(text_nodes, list):
-                        # It's a list of strings or selectors?
-                        # Usually ::text returns strings directly in some parsers, but in Parcel it might return objects.
-                        # safe fallback:
-                        text = "".join([str(t) for t in text_nodes])
-                    else:
-                        text = str(text_nodes)
-                except:
-                   pass
+                # Sometimes the image has alt text
+                if imgs:
+                    text = imgs.css('::attr(alt)').get()
             
             if not text:
                 continue
-            text = text.strip()
-            if len(text) < 3 or len(text) > 200:
-                continue
                 
+            text = text.strip()
+            if len(text) < 3 or len(text) > 300: # Increased max length slightly
+                continue
+            
+            # Filter out common UI elements
+            if any(x in text.lower() for x in ['menu', 'home', 'about', 'contact', 'search', 'cart', 'login', 'instagram', 'facebook']):
+                continue
+
             if imgs:
-                # src = imgs[0].attrib.get('src') -> Error again if we blindly use .attrib
-                # Better:
-                img_src = imgs.css('::attr(src)').get() or imgs.css('::attr(data-src)').get()
+                # Better image src extraction
+                img_src = (
+                    imgs.css('::attr(src)').get() or 
+                    imgs.css('::attr(data-src)').get() or 
+                    imgs.css('::attr(srcset)').get() # simplistic
+                )
+                
+                # If srcset, take first URL
+                if img_src and ',' in img_src:
+                    img_src = img_src.split(',')[0].strip().split(' ')[0]
                 
                 if img_src:
                     full_img_src = urljoin(url, img_src)
