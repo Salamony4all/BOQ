@@ -29,6 +29,30 @@ def is_valid_product_image(url):
     return not any(term in lower for term in IMAGE_EXCLUDE)
 
 
+def parse_woocommerce_category_url(url):
+    """
+    Extract category hierarchy from WooCommerce URL patterns.
+    e.g., /product-category/chairs/executive-chairs/ -> ('Chairs', 'Executive Chairs')
+    e.g., /chairs/stool/ -> ('Chairs', 'Stool')
+    """
+    try:
+        from urllib.parse import urlparse
+        path = urlparse(url).path.strip('/')
+        parts = [p for p in path.split('/') if p and p != 'product-category']
+        
+        if len(parts) >= 2:
+            main_cat = parts[0].replace('-', ' ').title()
+            sub_cat = parts[-1].replace('-', ' ').title()
+            if main_cat != sub_cat:
+                return main_cat, sub_cat
+        elif len(parts) == 1:
+            cat = parts[0].replace('-', ' ').title()
+            return cat, cat
+    except:
+        pass
+    return None, None
+
+
 def create_product(name, image_url, product_url, brand_name, main_category='General', sub_category=None):
     """
     Create a product dict in the format expected by the UI.
@@ -542,6 +566,12 @@ def scrape_url(url):
             cat_title = cat.get('title', 'Products')
             main_cat = cat.get('mainCategory', cat_title)
             sub_cat = cat.get('subCategory', cat_title)
+            
+            # Try to extract better category hierarchy from URL
+            url_main, url_sub = parse_woocommerce_category_url(cat_url)
+            if url_main and url_sub:
+                main_cat = url_main
+                sub_cat = url_sub
             
             if cat_url in all_seen:
                 continue
