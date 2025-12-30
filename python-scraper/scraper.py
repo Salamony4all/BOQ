@@ -551,6 +551,58 @@ def scrape_url(url):
                 logger.info(f"Crawling category: {main_cat} > {sub_cat} ({cat_url})")
                 cat_page = fetcher.fetch(cat_url)
                 
+                # === NEW: Discover subcategories within this category page ===
+                # Look for links that look like subcategories (e.g., /chairs/executive-chairs/)
+                if main_cat == sub_cat:  # Only if no subcategory was detected from menu
+                    try:
+                        subcats_found = []
+                        # Look for product category links on this page
+                        subcat_selectors = [
+                            '.product-categories a',
+                            '.woocommerce-loop-category a',
+                            'ul.product-categories a',
+                            '.widget_product_categories a',
+                            '.category-list a',
+                            'aside a[href*="product-category"]',
+                            'a[href*="product-category"]'
+                        ]
+                        
+                        for sel in subcat_selectors:
+                            subcat_links = cat_page.css(sel)
+                            if subcat_links and len(subcat_links) > 0:
+                                for sub_link in subcat_links:
+                                    try:
+                                        sub_href = sub_link.css('::attr(href)').get()
+                                        sub_text = sub_link.css('::text').get() or ""
+                                        sub_text = sub_text.strip()
+                                        
+                                        if not sub_href or not sub_text or len(sub_text) < 2:
+                                            continue
+                                        if any(ex in sub_text.lower() for ex in EXCLUDE_KEYWORDS):
+                                            continue
+                                        
+                                        full_sub_url = urljoin(base_url, sub_href)
+                                        
+                                        # Must be a child of current category URL
+                                        if full_sub_url.startswith(cat_url) or cat_url.split('/')[-2] in full_sub_url:
+                                            if full_sub_url not in all_seen and full_sub_url != cat_url:
+                                                subcats_found.append({
+                                                    "url": full_sub_url,
+                                                    "title": sub_text,
+                                                    "mainCategory": main_cat,
+                                                    "subCategory": sub_text
+                                                })
+                                    except:
+                                        continue
+                                break  # Found subcategories with this selector
+                        
+                        if subcats_found:
+                            logger.info(f"Found {len(subcats_found)} subcategories in {main_cat}")
+                            # Add to categories list for later crawling
+                            categories.extend(subcats_found)
+                    except Exception as e:
+                        logger.warning(f"Subcategory discovery error: {e}")
+                
                 products, seen = extract_products_from_page(cat_page, base_url, brand_name, main_cat, sub_cat)
                 all_products.extend(products)
                 all_seen.update(seen)
