@@ -48,21 +48,24 @@ def scrape_url(url):
     try:
         logger.info(f"Starting extraction for {url}")
         
-        # Use DynamicFetcher (Sync)
-        # We run this in a thread from main.py to avoid asyncio loop conflicts.
+        # v0.3+ API change: headless is often passed to init or configure.
+        # The error "Unknown parser argument: headless" on fetch() suggests fetch() interprets args as parser args (lxml),
+        # not browser args, if the fetcher is already configured?
+        # OR implementation details: fetch(url, **kwargs) -> if kwargs are not known, it passes them to parser?
         
-        # Regarding Scrapling deprecation warning:
-        # "Use `DynamicFetcher.configure(headless=True)`"
+        # Let's try explicit init with headless.
+        # If deprecated warning happens, it's better than crash.
+        # But we saw "Unknown parser argument" on fetch(..., headless=True). 
+        # So headless=True is NOT a valid argument for fetch().
         
-        fetcher = DynamicFetcher()
-        # Try to configure if method exists, else rely on fetch args
-        if hasattr(fetcher, 'configure'):
-            fetcher.configure(headless=True)
-            page = fetcher.fetch(url)
-        else:
-            # Fallback if configure doesn't exist (older version? or newer?)
-            # But the warning specifically asked for it.
-            page = fetcher.fetch(url, headless=True)
+        # Let's try:
+        # fetcher = DynamicFetcher(headless=True)
+        # page = fetcher.fetch(url)
+        
+        # If init is deprecated, we might need:
+        fetcher = DynamicFetcher(headless=True)
+        
+        page = fetcher.fetch(url)
         
         # Brand Info
         title = page.css('title::text').get() or "Unknown Brand"
