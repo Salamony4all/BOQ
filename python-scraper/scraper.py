@@ -298,8 +298,138 @@ def scrape_url(url):
             pass
 
         
+        
         logger.info(f"Extracted {len(products)} potential products.")
         
+        # --- DISCOVERY PHASE ---
+        # If we found very few products (e.g. < 3), and this looks like a homepage, 
+        # try to find "Shop", "Collection", or "Product" links and scrape them too.
+        if len(products) < 3:
+            logger.info("Few products found. attempting to discover product categories...")
+            
+            nav_links = page.css('nav a, header a, .menu a, .navigation a, a')
+            discovery_urls = set()
+            
+            keywords = ['product', 'collection', 'shop', 'store', 'catalogue', 'furniture', 'seating', 'table']
+            exclude = ['contact', 'about', 'login', 'cart', 'policy', 'terms', 'instagram', 'facebook']
+            
+            for link in nav_links:
+                href = link.css('::attr(href)').get()
+                if not href: continue
+                
+                txt = link.css('::text').get() or ""
+                txt_lower = txt.lower()
+                href_lower = href.lower()
+                
+                # Check for keywords
+                if any(k in href_lower or k in txt_lower for k in keywords):
+                    # Check exclusions
+                    if not any(e in href_lower for e in exclude):
+                        full = urljoin(url, href)
+                        if full != url and full not in seen_urls:
+                            discovery_urls.add(full)
+            
+            # Limit discovery to top 5 most promising links
+            # Prefer 'collection' or 'product' in URL
+            sorted_urls = sorted(list(discovery_urls), key=lambda u: 1 if 'collection' in u or 'product' in u else 2)
+            discovery_queue = sorted_urls[:5]
+            
+            logger.info(f"Discovered {len(discovery_queue)} category pages to check: {discovery_queue}")
+            
+            # Scrape discovered pages
+            for d_url in discovery_queue:
+                try:
+                    logger.info(f"Scraping discovered category: {d_url}")
+                    # Reuse fetcher? Scrapling 0.2.x might restart browser. 
+                    # If overhead is high, we accept it for now to solve the user's issue.
+                    d_page = fetcher.fetch(d_url)
+                    
+                    # --- REPEAT EXTRACTION FOR NEW PAGE ---
+                    # (Refactoring this into a helper would be cleaner, but for now inline to avoid huge diff)
+                    
+                    # 1. JSON-LD on category page
+                    try:
+                        d_scripts = d_page.css('script[type="application/ld+json"]::text').getall()
+                        if not isinstance(d_scripts, list):
+                            d_single = d_page.css('script[type="application/ld+json"]::text').get()
+                            d_scripts = [d_single] if d_single else []
+
+                        for script in d_scripts:
+                            try:
+                                data = json.loads(script)
+                                items = data.get('@graph', [data]) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                                for item in items:
+                                    if not isinstance(item, dict): continue
+                                    item_type = item.get('@type', '')
+                                    if isinstance(item_type, list): item_type = item_type[0]
+                                    
+                                    if item_type == 'ItemList':
+                                        list_items = item.get('itemListElement', [])
+                                        for li in list_items:
+                                            if isinstance(li, dict):
+                                                product = li.get('item')
+                                                if product and isinstance(product, dict):
+                                                    p_name = product.get('name')
+                                                    p_url = product.get('url') or product.get('@id')
+                                                    p_img = product.get('image')
+                                                    if p_name and p_url:
+                                                        f_url = urljoin(d_url, p_url)
+                                                        f_img = urljoin(d_url, p_img) if p_img else ""
+                                                        if f_url not in seen_urls:
+                                                            products.append({"name": p_name, "link": f_url, "image": f_img, "source": "json-ld-cat"})
+                                                            seen_urls.add(f_url)
+                            except: continue
+                    except: pass
+                    
+                    # 2. Heuristic Link Extraction on category page
+                    d_links = d_page.css('a')
+                    for link in d_links:
+                        href = link.css('::attr(href)').get()
+                        if not href: continue
+                        f_url = urljoin(d_url, href)
+                        if f_url in seen_urls: continue
+                        
+                        imgs = link.css('img')
+                        
+                        # Recursive text
+                        text = None
+                        try:
+                            if hasattr(link, 'xpath'):
+                                all_text = link.xpath('.//text()').getall()
+                                text = " ".join([t.strip() for t in all_text if t.strip()])
+                            elif hasattr(link, 'css'):
+                                text_nodes = link.css('*::text').getall()
+                                text = " ".join([t.strip() for t in text_nodes if t.strip()])
+                        except: pass
+                        
+                        if not text:
+                             text = link.css('::text').get()
+                             if not text and imgs: text = imgs.css('::attr(alt)').get()
+                        
+                        if not text: continue
+                        text = text.strip()
+                        
+                        is_p = '/product/' in f_url or '/item/' in f_url
+                        if is_p:
+                            if len(text) < 2: continue
+                        else:
+                            if len(text) < 3 or len(text) > 300: continue
+                            
+                        low = text.lower()
+                        if any(x == low for x in ['menu', 'home', 'login', 'cart']): continue
+                        if not is_p and any(x in low for x in ['instagram', 'facebook', 'policy']): continue
+                        
+                        if imgs:
+                            img_src = imgs.css('::attr(src)').get() or imgs.css('::attr(data-src)').get() or imgs.css('::attr(srcset)').get()
+                            if img_src:
+                                if ',' in img_src: img_src = img_src.split(',')[0].strip().split(' ')[0]
+                                f_img = urljoin(d_url, img_src)
+                                products.append({"name": text, "link": f_url, "image": f_img, "source": "discovery"})
+                                seen_urls.add(f_url)
+                                
+                except Exception as e:
+                    logger.warning(f"Error scraping discovered url {d_url}: {e}")
+
         result = {
             "products": products,
             "brandInfo": {
