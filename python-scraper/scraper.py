@@ -9,9 +9,13 @@ logger = logging.getLogger(__name__)
 
 try:
     from scrapling import DynamicFetcher
-except ImportError:
-    logger.error("Failed to import scrapling")
-    pass
+except ImportError as e:
+    logger.error(f"CRITICAL: Failed to import scrapling: {e}")
+    # Don't pass, let it crash or define a dummy to avoid NameError if you want to keep running for health checks
+    # But for debugging, we want to know.
+    import traceback
+    logger.error(traceback.format_exc())
+    DynamicFetcher = None
 
 def scrape_url(url):
     try:
