@@ -13,11 +13,14 @@ app = FastAPI()
 class ScrapeRequest(BaseModel):
     url: str
 
+import asyncio
 @app.post("/scrape")
 async def scrape_endpoint(req: ScrapeRequest):
     logger.info(f"Received scrape request for: {req.url}")
     try:
-        data = await scrape_url(req.url)
+        loop = asyncio.get_event_loop()
+        # Run synchronous Scrapling in a separate thread to avoid "Sync Loop inside Async Loop" error
+        data = await loop.run_in_executor(None, scrape_url, req.url)
         return data
     except Exception as e:
         logger.error(f"Scrape failed: {e}")

@@ -44,13 +44,25 @@ except ImportError as e:
     except:
         pass
 
-async def scrape_url(url):
+def scrape_url(url):
     try:
         logger.info(f"Starting extraction for {url}")
-        from scrapling import AsyncFetcher
         
-        fetcher = AsyncFetcher() 
-        page = await fetcher.fetch(url, headless=True)
+        # Use DynamicFetcher (Sync)
+        # We run this in a thread from main.py to avoid asyncio loop conflicts.
+        
+        # Regarding Scrapling deprecation warning:
+        # "Use `DynamicFetcher.configure(headless=True)`"
+        
+        fetcher = DynamicFetcher()
+        # Try to configure if method exists, else rely on fetch args
+        if hasattr(fetcher, 'configure'):
+            fetcher.configure(headless=True)
+            page = fetcher.fetch(url)
+        else:
+            # Fallback if configure doesn't exist (older version? or newer?)
+            # But the warning specifically asked for it.
+            page = fetcher.fetch(url, headless=True)
         
         # Brand Info
         title = page.css('title::text').get() or "Unknown Brand"
