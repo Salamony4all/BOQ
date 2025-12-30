@@ -76,7 +76,21 @@ def scrape_url(url):
         # Heuristics for logo
         logo_img = page.css('header img')
         if logo_img:
-            src = logo_img.attrib.get('src')
+            # Scrapling/Parcel Selectors might return a list of elements/Selector objects.
+            # If logo_img is truthy, we might need to get the first one.
+            # And checking the error: 'Selectors' object has no attribute 'attrib'
+            # This suggests logo_img is a list-like 'Selectors' object, not a single Element.
+            # We should probably do: logo_img[0].attrib['src'] or similar.
+            # But the safer Scrapling way:
+            src = logo_img.attrib['src'] if hasattr(logo_img, 'attrib') else None
+            # Actually, let's look at Scrapling docs pattern:
+            # page.css('header img') -> Selectors
+            # page.css('header img').attrib['src'] ?? No.
+            
+            # Standard pattern:
+            # page.css('header img::attr(src)').get()
+            
+            src = page.css('header img::attr(src)').get()
             if src:
                 logo = urljoin(url, src)
         
@@ -88,7 +102,8 @@ def scrape_url(url):
         logger.info(f"Found {len(links)} links, analyzing potential products...")
         
         for link in links:
-            href = link.attrib.get('href')
+            href = link.attrib['href'] if hasattr(link, 'attrib') else link.css('::attr(href)').get()
+            
             if not href or href.startswith('#') or href.startswith('javascript'):
                 continue
                 
@@ -98,10 +113,15 @@ def scrape_url(url):
                 continue
             
             # Check for image inside
+            # link is a Selector/Element
             imgs = link.css('img')
             
             # Check for text (name)
-            text = link.text
+            text = link.css('::text').get()
+            if not text:
+                # deeper check?
+                text = "".join(link.css('::text').getall())
+            
             if not text:
                 continue
             text = text.strip()
@@ -109,7 +129,10 @@ def scrape_url(url):
                 continue
                 
             if imgs:
-                img_src = imgs[0].attrib.get('src') or imgs[0].attrib.get('data-src')
+                # src = imgs[0].attrib.get('src') -> Error again if we blindly use .attrib
+                # Better:
+                img_src = imgs.css('::attr(src)').get() or imgs.css('::attr(data-src)').get()
+                
                 if img_src:
                     full_img_src = urljoin(url, img_src)
                     
