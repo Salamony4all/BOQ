@@ -29,6 +29,22 @@ def is_valid_product_image(url):
     return not any(term in lower for term in IMAGE_EXCLUDE)
 
 
+def create_product(name, image_url, product_url, brand_name, category='General'):
+    """
+    Create a product dict in the format expected by the UI.
+    """
+    return {
+        "mainCategory": category,
+        "subCategory": category,
+        "family": brand_name,
+        "model": name,
+        "description": name,
+        "imageUrl": image_url,
+        "productUrl": product_url,
+        "price": 0
+    }
+
+
 def extract_products_from_page(page, base_url, brand_name, category='General'):
     """
     Extract products from a page using multiple strategies.
@@ -102,13 +118,13 @@ def extract_products_from_page(page, base_url, brand_name, category='General'):
                         seen.add(title.lower())
                         seen.add(full_url)
                         
-                        products.append({
-                            "name": title,
-                            "link": full_url,
-                            "image": full_img,
-                            "category": category,
-                            "source": "woocommerce"
-                        })
+                        products.append(create_product(
+                            name=title,
+                            image_url=full_img,
+                            product_url=full_url,
+                            brand_name=brand_name,
+                            category=category
+                        ))
                         
                     except Exception as e:
                         continue
@@ -169,19 +185,19 @@ def extract_products_from_page(page, base_url, brand_name, category='General'):
                         continue
                     
                     # Skip if already added
-                    if any(p['link'] == full_url for p in products):
+                    if any(p['productUrl'] == full_url for p in products):
                         continue
                     
                     seen.add(title.lower())
                     seen.add(full_url)
                     
-                    products.append({
-                        "name": title,
-                        "link": full_url,
-                        "image": full_img,
-                        "category": category,
-                        "source": "generic"
-                    })
+                    products.append(create_product(
+                        name=title,
+                        image_url=full_img,
+                        product_url=full_url,
+                        brand_name=brand_name,
+                        category=category
+                    ))
                     
                 except:
                     continue
@@ -224,13 +240,13 @@ def extract_products_from_page(page, base_url, brand_name, category='General'):
                             full_img = urljoin(base_url, p_img)
                             
                             if full_url not in seen and p_name.lower() not in seen:
-                                products.append({
-                                    "name": p_name,
-                                    "link": full_url,
-                                    "image": full_img,
-                                    "category": category,
-                                    "source": "json-ld"
-                                })
+                                products.append(create_product(
+                                    name=p_name,
+                                    image_url=full_img,
+                                    product_url=full_url,
+                                    brand_name=brand_name,
+                                    category=category
+                                ))
                                 seen.add(full_url)
                                 seen.add(p_name.lower())
                     
@@ -248,13 +264,13 @@ def extract_products_from_page(page, base_url, brand_name, category='General'):
                                         full_img = urljoin(base_url, p_img) if p_img else ""
                                         
                                         if full_url not in seen:
-                                            products.append({
-                                                "name": p_name,
-                                                "link": full_url,
-                                                "image": full_img,
-                                                "category": category,
-                                                "source": "json-ld-list"
-                                            })
+                                            products.append(create_product(
+                                                name=p_name,
+                                                image_url=full_img,
+                                                product_url=full_url,
+                                                brand_name=brand_name,
+                                                category=category
+                                            ))
                                             seen.add(full_url)
             except:
                 continue
@@ -441,8 +457,8 @@ def scrape_url(url):
         unique_products = []
         seen_keys = set()
         for p in all_products:
-            key = f"{p['name']}|{p['link']}".lower()
-            if key not in seen_keys and is_valid_product_image(p.get('image', '')):
+            key = f"{p['model']}|{p['productUrl']}".lower()
+            if key not in seen_keys and is_valid_product_image(p.get('imageUrl', '')):
                 seen_keys.add(key)
                 unique_products.append(p)
         
