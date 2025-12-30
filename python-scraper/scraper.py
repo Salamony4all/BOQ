@@ -102,7 +102,15 @@ def scrape_url(url):
         logger.info(f"Found {len(links)} links, analyzing potential products...")
         
         for link in links:
-            href = link.attrib['href'] if hasattr(link, 'attrib') else link.css('::attr(href)').get()
+            # Scrapling/Patchright Selectors:
+            # .attrib is usually on an Element, but 'link' here might be a Selector wrapper.
+            # If so, it might not have .attrib.
+            # Safe way in Scrapling/Parcel: link.css('::attr(href)').get()
+            
+            href = link.css('::attr(href)').get()
+            # Fallback if link is actually an lxml element (shouldn't be if we iterate page.css)
+            if href is None and hasattr(link, 'attrib'):
+                href = link.attrib.get('href')
             
             if not href or href.startswith('#') or href.startswith('javascript'):
                 continue
