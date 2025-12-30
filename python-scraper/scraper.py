@@ -294,9 +294,13 @@ def discover_category_pages(page, base_url):
     seen = set()
     
     try:
-        # === STRATEGY 1: Detect WooCommerce/WordPress menu structure ===
+        # === STRATEGY 1: Detect WooCommerce/WordPress/Elementor menu structure ===
         # Look for nav menus with nested ul/li structure
         menu_selectors = [
+            # Elementor Mega Menu (used by Ottimo, Besa theme)
+            'ul.elementor-nav-menu > li.level-0',
+            'ul.elementor-nav-menu > li.menu-item',
+            # Standard WordPress
             'nav ul.menu > li',
             'nav ul.nav-menu > li', 
             '.primary-menu > li',
@@ -317,10 +321,8 @@ def discover_category_pages(page, base_url):
                 
                 for item in menu_items:
                     try:
-                        # Get main category link
-                        main_link = item.css('> a')
-                        if not main_link:
-                            main_link = item.css('a')
+                        # Get main category link - try multiple patterns
+                        main_link = item.css('> a.elementor-item') or item.css('> a') or item.css('a')
                         if not main_link:
                             continue
                         
@@ -334,8 +336,24 @@ def discover_category_pages(page, base_url):
                         if any(ex in main_text.lower() for ex in EXCLUDE_KEYWORDS):
                             continue
                         
-                        # Check for submenu (dropdown items)
-                        submenu_items = item.css('ul.sub-menu > li > a, ul.dropdown-menu > li > a, .sub-menu a, .dropdown a')
+                        # Check for submenu (dropdown items) - multiple patterns including Elementor
+                        submenu_selectors = [
+                            # Elementor mega menu patterns
+                            'div.dropdown-menu a',
+                            'div.dropdown-menu ul.menu-vertical li a',
+                            'div.dropdown-menu li a',
+                            # Standard WordPress patterns
+                            'ul.sub-menu > li > a',
+                            'ul.dropdown-menu > li > a',
+                            '.sub-menu a',
+                            '.dropdown a'
+                        ]
+                        
+                        submenu_items = None
+                        for sub_sel in submenu_selectors:
+                            submenu_items = item.css(sub_sel)
+                            if submenu_items and len(submenu_items) > 0:
+                                break
                         
                         if submenu_items and len(submenu_items) > 0:
                             # Has subcategories - add each as separate entry
