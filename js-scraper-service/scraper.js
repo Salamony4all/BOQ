@@ -1144,16 +1144,16 @@ class ScraperService {
         if (onProgress) onProgress(98, 'Finalizing harvest database...');
 
         // Post-processing: Remove products from generic "merged" collections if they slipped through
-        allProducts = allProducts.filter(p => {
+        const filteredProducts = allProducts.filter(p => {
             const c = (p.collection || '').toLowerCase();
             return !c.startsWith('products by') && c !== 'products' && c !== 'all products';
         });
 
-        console.log(`\n✅ Architonic crawl finished. Found ${allProducts.length} products.`);
+        console.log(`\n✅ Architonic crawl finished. Found ${filteredProducts.length} products.`);
         if (onProgress) onProgress(100, 'Harvest Complete!');
 
         return {
-            products: allProducts,
+            products: filteredProducts,
             brandInfo: { name: brandName, logo: brandLogo }
         };
     }
