@@ -784,7 +784,11 @@ class ScraperService {
 
                                         // STRICTLY exclude generic headers/tabs that just list everything (merging risk)
                                         const h = href.replace(/\/$/, ''); // Remove trailing slash
-                                        const isUtility = h.endsWith('/collections') || h.endsWith('/products') || h.endsWith('/all-products') || !h.includes('/b/');
+                                        const isUtility = h.endsWith('/collections') ||
+                                            h.endsWith('/products') ||
+                                            h.endsWith('/all-products') ||
+                                            !h.includes('/b/') ||
+                                            /\/products\/\d+$/.test(h); // Excludes /products/12345 (The main products tab)
 
                                         return !isSamePage && !href.includes('#') && isSubLink && !isUtility;
                                     });
