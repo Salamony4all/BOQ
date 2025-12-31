@@ -869,10 +869,10 @@ class ScraperService {
                         await page.evaluate(() => window.scrollTo(0, 0));
 
                         // 0. Priority: Is the current URL already a products or collection page?
-                        const currentUrl = request.url;
-                        const isAlreadyDeep = currentUrl.includes('/products/') ||
-                            currentUrl.includes('/collection/') ||
-                            currentUrl.includes('/category/');
+                        const requestUrl = request.url;
+                        const isAlreadyDeep = requestUrl.includes('/products/') ||
+                            requestUrl.includes('/collection/') ||
+                            requestUrl.includes('/category/');
 
                         // STRICT MODE: User requested "ONLY COLLECTIONS"
                         // We strictly ignore generic tabs (like New Products, Projects) and individual featured items
