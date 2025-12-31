@@ -637,7 +637,95 @@ app.post('/api/scrape-ai', async (req, res) => {
       return res.status(400).json({ error: 'URL is required' });
     }
 
-    // Check cloud scrapers
+    // PRIORITY 1: Use Railway JS Scraper Service if available
+    if (JS_SCRAPER_SERVICE_URL) {
+      console.log('🚂 [scrape-ai] Delegating to Railway JS Scraper Service');
+      try {
+        const jsScraperAvailable = await isJsScraperAvailable();
+        if (jsScraperAvailable) {
+          // Determine which endpoint to use
+          const isArchitonic = url.toLowerCase().includes('architonic.com');
+          const scraperEndpoint = isArchitonic ? '/scrape-architonic' : '/scrape';
+
+          // Start task on Railway
+          const taskResult = await callJsScraperService(scraperEndpoint, { url, name, sync: false });
+
+          if (taskResult.taskId) {
+            // Create local task to track Railway task
+            const taskId = `railway_${taskResult.taskId}`;
+            tasks.set(taskId, {
+              id: taskId,
+              status: 'processing',
+              progress: 10,
+              stage: `Railway: ${isArchitonic ? 'Architonic' : 'Universal'} scraper started...`,
+              brandName: name || 'Detecting...',
+              railwayTaskId: taskResult.taskId
+            });
+
+            // Poll Railway task in background
+            (async () => {
+              try {
+                const result = await pollJsScraperTask(taskResult.taskId, (progress, stage) => {
+                  const currentTask = tasks.get(taskId);
+                  if (currentTask) {
+                    tasks.set(taskId, { ...currentTask, progress, stage: `Railway: ${stage}` });
+                  }
+                });
+
+                const products = result.products || [];
+                const brandNameFound = name || result.brandInfo?.name || 'Unknown Brand';
+                const brandLogo = result.brandInfo?.logo || '';
+
+                const id = Date.now();
+                const newBrand = {
+                  id,
+                  name: brandNameFound,
+                  url,
+                  origin,
+                  budgetTier,
+                  logo: brandLogo,
+                  products,
+                  createdAt: new Date(),
+                };
+
+                // Save to blob if available
+                if (blobStoreAvailable) {
+                  try {
+                    await put(`brands/${id}.json`, JSON.stringify(newBrand), {
+                      access: 'public',
+                      contentType: 'application/json'
+                    });
+                  } catch (e) {
+                    console.error('Blob save error:', e);
+                  }
+                }
+
+                tasks.set(taskId, {
+                  ...tasks.get(taskId),
+                  status: 'completed',
+                  progress: 100,
+                  stage: 'Complete!',
+                  brand: newBrand
+                });
+              } catch (err) {
+                console.error('Railway task polling failed:', err);
+                tasks.set(taskId, {
+                  ...tasks.get(taskId),
+                  status: 'failed',
+                  error: err.message
+                });
+              }
+            })();
+
+            return res.json({ success: true, taskId, message: 'Railway scraping started' });
+          }
+        }
+      } catch (railwayError) {
+        console.warn('Railway service unavailable, falling back:', railwayError.message);
+      }
+    }
+
+    // PRIORITY 2: Check cloud scrapers (ScrapingBee / Browserless)
     const isAmara = url.includes('amara-art.com');
 
     // Force ScrapingBee for Amara (Firewall Bypass)
@@ -655,13 +743,14 @@ app.post('/api/scrape-ai', async (req, res) => {
 
     const useBrowserless = (isVercel || (!useScrapingBee)) && browserlessScraper.isConfigured() && !useScrapingBee;
 
-    if (isVercel && !useScrapingBee && !useBrowserless) {
+    if (isVercel && !useScrapingBee && !useBrowserless && !JS_SCRAPER_SERVICE_URL) {
       return res.status(503).json({
-        error: 'Scraping Unavailable - API Key Missing',
-        details: 'Cloud scraping requires BROWSERLESS_API_KEY or SCRAPINGBEE_API_KEY. Please add it to your Vercel environment variables, or run the scraper locally.',
+        error: 'Scraping Unavailable - No Scraper Configured',
+        details: 'Cloud scraping requires BROWSERLESS_API_KEY, SCRAPINGBEE_API_KEY, or JS_SCRAPER_SERVICE_URL. Please add one to your Vercel environment variables.',
         isVercelLimitation: true
       });
     }
+
 
     // Start background task
     const taskId = `ai_scrape_${Date.now()}`;
