@@ -591,11 +591,11 @@ class ScraperService {
             // === MEMORY-OPTIMIZED FOR VERCEL HOBBY (2048 MB) ===
             maxConcurrency: 3, // Reduced from 10 for memory efficiency
             minConcurrency: 1,
-            maxRequestsPerCrawl: 500, // Reduced from 10000 to prevent OOM
+            maxRequestsPerCrawl: 2000, // Increased to allow full brand catalog discovery
             useSessionPool: false,
             persistCookiesPerSession: false,
-            requestHandlerTimeoutSecs: 120, // Reduced timeout
-            navigationTimeoutSecs: 45, // Reduced from 90
+            requestHandlerTimeoutSecs: 180, // Increased timeout for long pages
+            navigationTimeoutSecs: 60, // Increased from 45
 
             // Memory-optimized browser settings
             launchContext: {
@@ -707,27 +707,36 @@ class ScraperService {
                         });
                         await page.waitForTimeout(2000);
 
-                        console.log(`🔍 [START] Discovery: Extensive scrolling to reveal all items...`);
+                        console.log(`🔍 [START] Discovery: Extensive scrolling and expansion to reveal all items...`);
                         const discoveredSubLinks = new Set();
                         const discoveredProductLinks = new Set();
                         const discoveredTabLinks = new Set();
+                        let lastHeight = 0;
+                        let sameHeightCount = 0;
 
-                        for (let i = 0; i < 100; i++) {
-                            const progressVal = Math.min(60, 20 + i);
-                            if (onProgress) onProgress(progressVal, `Exploring catalog depth (${i + 1}/100)...`);
+                        // Increased to 200 iterations to handle massive catalogs (up to ~10k items)
+                        for (let i = 0; i < 200; i++) {
+                            const progressVal = Math.min(60, 20 + (i * 0.2));
+                            if (onProgress && i % 5 === 0) onProgress(progressVal, `Exploring catalog depth (Scan ${i})...`);
 
                             const iterationResults = await page.evaluate(async (currentUrl) => {
-                                window.scrollBy(0, 1500);
-                                await new Promise(r => setTimeout(r, 600)); // Wait for render
+                                // Dynamic scroll amount based on page height
+                                window.scrollBy(0, 2500);
+                                await new Promise(r => setTimeout(r, 400)); // Faster scroll
 
-                                // 1. Find Load More
+                                // 1. Find and Click ANY "Load More" / "Show More" / "+" buttons
                                 const elements = Array.from(document.querySelectorAll('button, a, span, div'));
                                 const loadMore = elements.find(el => {
-                                    const t = el.innerText.toLowerCase();
-                                    return (t.includes('load more') || t.includes('show more') || t.includes('más results') || t.includes('produkte laden')) && el.offsetParent !== null;
+                                    const t = el.innerText.toLowerCase().trim();
+                                    const isLoadText = t === 'load more' || t === 'show more' || t === 'more products' || t === 'mehr anzeign' || t === '+' || t.includes('view all');
+                                    return isLoadText && el.offsetParent !== null; // Must be visible
                                 });
+
                                 if (loadMore && typeof loadMore.click === 'function') {
-                                    try { loadMore.click(); } catch (e) { }
+                                    try {
+                                        loadMore.click();
+                                        await new Promise(r => setTimeout(r, 500)); // Wait for content
+                                    } catch (e) { }
                                 }
 
                                 // 2. Identify links on current viewport state
@@ -757,16 +766,27 @@ class ScraperService {
                                     .map(el => el.href)
                                     .filter(href => (href.includes('/p/') || href.includes('/product/')) && href.includes('architonic.com'));
 
-                                return { tabs, collections, products };
+                                return { tabs, collections, products, height: document.body.scrollHeight };
                             }, request.url);
 
                             iterationResults.tabs.forEach(l => discoveredTabLinks.add(l));
                             iterationResults.collections.forEach(l => discoveredSubLinks.add(l));
                             iterationResults.products.forEach(l => discoveredProductLinks.add(l));
 
-                            // If we've scrolled a lot and things seem stable, we could break early, 
-                            // but for discovery it's safer to keep going if the user reported missing items.
-                            await page.waitForTimeout(400);
+                            // Breaker: Stop if no height change for 15 iterations (end of infinite scroll)
+                            if (iterationResults.height === lastHeight) {
+                                sameHeightCount++;
+                                if (sameHeightCount > 15) {
+                                    console.log(`   ℹ️ Reached end of content (no expansion for 15 cycles).`);
+                                    break;
+                                }
+                            } else {
+                                sameHeightCount = 0;
+                                lastHeight = iterationResults.height;
+                            }
+
+                            // Log periodically
+                            if (i % 20 === 0) console.log(`   Stats: ${discoveredSubLinks.size} colls, ${discoveredProductLinks.size} prods`);
                         }
                         await page.evaluate(() => window.scrollTo(0, 0));
 
