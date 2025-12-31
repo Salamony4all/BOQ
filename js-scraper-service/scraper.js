@@ -766,11 +766,19 @@ class ScraperService {
                                 const allLinks = Array.from(document.querySelectorAll('a'));
                                 const normalizedCurrent = currentUrl.replace(/\/$/, '');
 
+                                // Helper to detect generic product dumps
+                                const isGenericProductUrl = (url) => {
+                                    const h = url.split('?')[0].replace(/\/$/, ''); // Handle query params and trailing slash
+                                    return /\/products\/\d+$/.test(h) || h.endsWith('/products') || h.endsWith('/all-products');
+                                };
+
                                 const tabs = allLinks
                                     .filter(el => {
                                         const text = el.innerText.trim().toLowerCase();
                                         const isProductTab = text === 'products' || text.includes('all products') || text === 'produkte' || text === 'prodotti' || (text.includes('product') && !text.includes('project'));
-                                        return isProductTab && /\/(products|all-products)\//.test(el.href);
+                                        const href = el.href;
+                                        // key fix: check isGenericProductUrl here too
+                                        return isProductTab && /\/(products|all-products)\//.test(href) && !isGenericProductUrl(href);
                                     })
                                     .map(el => el.href);
 
@@ -778,17 +786,15 @@ class ScraperService {
                                     .map(el => el.href)
                                     .filter(href => {
                                         if (!href || !href.includes('architonic.com')) return false;
+                                        const normalizedHref = href.replace(/\/$/, '');
                                         const isSamePage = normalizedHref === normalizedCurrent;
+
                                         // Broadened filter to ensure we catch EVERY category type
                                         const isSubLink = href.includes('/collection/') || href.includes('/collections/') || href.includes('/category/') || href.includes('/product-group/') || (href.includes('/products/') && !href.includes('/p/'));
 
-                                        // STRICTLY exclude generic headers/tabs that just list everything (merging risk)
-                                        const h = href.replace(/\/$/, ''); // Remove trailing slash
-                                        const isUtility = h.endsWith('/collections') ||
-                                            h.endsWith('/products') ||
-                                            h.endsWith('/all-products') ||
-                                            !h.includes('/b/') ||
-                                            /\/products\/\d+$/.test(h); // Excludes /products/12345 (The main products tab)
+                                        // STRICTLY exclude generic headers/tabs that just list everything
+                                        const h = href.replace(/\/$/, '');
+                                        const isUtility = h.endsWith('/collections') || !h.includes('/b/') || isGenericProductUrl(href);
 
                                         return !isSamePage && !href.includes('#') && isSubLink && !isUtility;
                                     });
