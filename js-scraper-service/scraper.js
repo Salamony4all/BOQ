@@ -708,6 +708,28 @@ class ScraperService {
                         await page.waitForTimeout(2000);
 
                         console.log(`🔍 [START] Discovery: Extensive scrolling and expansion to reveal all items...`);
+
+                        // PRIORITIZE COLLECTIONS TAB to ensure we find categories, not just a product dump
+                        console.log('🔍 [START] Looking for "Collections" tab...');
+                        try {
+                            const foundCollections = await page.evaluate(() => {
+                                const links = Array.from(document.querySelectorAll('a'));
+                                const collLink = links.find(l => {
+                                    const t = l.innerText.toLowerCase().trim();
+                                    return (t === 'collections' || t === 'kollektionen' || t === 'collezioni') && l.href.includes('/collections');
+                                });
+                                if (collLink) {
+                                    collLink.click();
+                                    return true;
+                                }
+                                return false;
+                            });
+                            if (foundCollections) {
+                                console.log('   ✅ Clicked "Collections" tab. Waiting for load...');
+                                await page.waitForTimeout(3000);
+                            }
+                        } catch (e) { console.log('   Warning: Failed to navigate to Collections tab:', e.message); }
+
                         const discoveredSubLinks = new Set();
                         const discoveredProductLinks = new Set();
                         const discoveredTabLinks = new Set();
@@ -756,11 +778,14 @@ class ScraperService {
                                     .map(el => el.href)
                                     .filter(href => {
                                         if (!href || !href.includes('architonic.com')) return false;
-                                        const normalizedHref = href.replace(/\/$/, '');
                                         const isSamePage = normalizedHref === normalizedCurrent;
-                                        // Broadened filter to ensure we catch EVERY category type, including some /products/ pages that act as categories
+                                        // Broadened filter to ensure we catch EVERY category type
                                         const isSubLink = href.includes('/collection/') || href.includes('/collections/') || href.includes('/category/') || href.includes('/product-group/') || (href.includes('/products/') && !href.includes('/p/'));
-                                        const isUtility = href.endsWith('/collections') || href.endsWith('/collections/') || (href.endsWith('/products') && !href.includes('/b/'));
+
+                                        // STRICTLY exclude generic headers/tabs that just list everything (merging risk)
+                                        const h = href.replace(/\/$/, ''); // Remove trailing slash
+                                        const isUtility = h.endsWith('/collections') || h.endsWith('/products') || h.endsWith('/all-products') || !h.includes('/b/');
+
                                         return !isSamePage && !href.includes('#') && isSubLink && !isUtility;
                                     });
 
