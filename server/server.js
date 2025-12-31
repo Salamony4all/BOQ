@@ -610,7 +610,9 @@ app.post('/api/scrape-brand', async (req, res) => {
                   status: 'completed',
                   progress: 100,
                   stage: 'Complete!',
-                  brand: newBrand
+                  brand: newBrand,
+                  productCount: products.length,
+                  brandName: brandNameFound
                 });
               } catch (err) {
                 console.error('Railway task polling failed:', err);
@@ -767,7 +769,9 @@ app.post('/api/scrape-ai', async (req, res) => {
                   status: 'completed',
                   progress: 100,
                   stage: 'Complete!',
-                  brand: newBrand
+                  brand: newBrand,
+                  productCount: products.length,
+                  brandName: brandNameFound
                 });
               } catch (err) {
                 console.error('Railway task polling failed:', err);
