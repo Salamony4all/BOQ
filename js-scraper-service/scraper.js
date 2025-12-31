@@ -694,6 +694,27 @@ class ScraperService {
 
                         console.log(`Found brand: ${brandName}`);
 
+                        // FORCE NAVIGATION TO COLLECTIONS PAGE
+                        // Overview pages often show limited subsets. We want the full grid.
+                        const currentUrl = page.url();
+                        if (currentUrl.includes('/b/') && !currentUrl.includes('/collections/')) {
+                            // Try to construct collections URL: /en/b/brand-slug/collections/ID
+                            // Pattern: .../b/brand-slug/ID/... or .../b/brand-slug/product...
+                            // Actually, just inserting 'collections' before the ID is usually correct if it's missing
+                            // Regex: /b/([^/]+)/(\d+)  -> /b/$1/collections/$2
+
+                            const collectionsUrl = currentUrl.replace(/\/b\/([^/]+)\/(\d+)/, '/b/$1/collections/$2');
+                            if (collectionsUrl !== currentUrl && collectionsUrl.includes('/collections/')) {
+                                console.log(`   🚀 Force-navigating to Collections Grid: ${collectionsUrl}`);
+                                try {
+                                    await page.goto(collectionsUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                    await page.waitForTimeout(2000);
+                                } catch (e) {
+                                    console.log(`   ⚠️ Force nav failed, falling back to tab click: ${e.message}`);
+                                }
+                            }
+                        }
+
                         console.log(`🔍 [START] Checking for popups and consent banners...`);
                         await page.evaluate(() => {
                             const closeTerms = ['maybe later', 'i accept', 'close', 'continue', 'agree', 'accept all', 'allow all'];
@@ -815,11 +836,11 @@ class ScraperService {
                             const newCount = discoveredSubLinks.size + discoveredProductLinks.size;
                             const foundNewItems = newCount > prevCount;
 
-                            // Breaker: Stop if no height change AND no new items for 15 iterations (end of infinite scroll)
+                            // Breaker: Stop if no height change AND no new items for 30 iterations (end of infinite scroll)
                             if (iterationResults.height === lastHeight && !foundNewItems) {
                                 sameHeightCount++;
-                                if (sameHeightCount > 15) {
-                                    console.log(`   ℹ️ Reached end of content (no expansion for 15 cycles).`);
+                                if (sameHeightCount > 30) {
+                                    console.log(`   ℹ️ Reached end of content (no expansion for 30 cycles).`);
                                     break;
                                 }
                             } else {
