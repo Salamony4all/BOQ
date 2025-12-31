@@ -773,7 +773,8 @@ class ScraperService {
                             const iterationResults = await page.evaluate(async (currentUrl) => {
                                 // Dynamic scroll amount based on page height
                                 window.scrollBy(0, 1000);
-                                await new Promise(r => setTimeout(r, 1000)); // Increased wait for reliable loading
+                                try { await page.waitForLoadState('networkidle', { timeout: 2000 }); } catch (e) { } // Wait for network to settle
+                                await new Promise(r => setTimeout(r, 500)); // Small buffer
 
                                 // 1. Find and Click ANY "Load More" / "Show More" / "+" buttons
                                 const elements = Array.from(document.querySelectorAll('button, a, span, div'));
@@ -1142,6 +1143,12 @@ class ScraperService {
         await crawler.run([url]);
 
         if (onProgress) onProgress(98, 'Finalizing harvest database...');
+
+        // Post-processing: Remove products from generic "merged" collections if they slipped through
+        allProducts = allProducts.filter(p => {
+            const c = p.collection.toLowerCase();
+            return !c.startsWith('products by') && c !== 'products' && c !== 'all products';
+        });
 
         console.log(`\n✅ Architonic crawl finished. Found ${allProducts.length} products.`);
         if (onProgress) onProgress(100, 'Harvest Complete!');
