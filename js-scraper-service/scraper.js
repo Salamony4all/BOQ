@@ -688,6 +688,9 @@ class ScraperService {
 
                         if (onProgress) onProgress(20, `Identified Brand: ${brandName}...`, brandName);
 
+                        // Set a MASSIVE viewport to force-load as much as possible (tricks lazy loading)
+                        await page.setViewportSize({ width: 1920, height: 4000 });
+
                         try {
                             brandLogo = await page.$eval('.logo img, .brand-logo img, img[alt*="logo" i]', el => el.src);
                         } catch (e) { brandLogo = ''; }
@@ -706,11 +709,12 @@ class ScraperService {
                             const collectionsUrl = currentUrl.replace(/\/b\/([^/]+)\/(\d+)/, '/b/$1/collections/$2');
                             if (collectionsUrl !== currentUrl && collectionsUrl.includes('/collections/')) {
                                 console.log(`   🚀 Force-navigating to Collections Grid: ${collectionsUrl}`);
-                                try {
-                                    await page.goto(collectionsUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+                                const response = await page.goto(collectionsUrl, { waitUntil: 'domcontentloaded', timeout: 30000 }).catch(e => null);
+                                if (!response || response.status() === 404) {
+                                    console.log(`   ⚠️ Force nav failed (404/Error), reverting to original URL: ${currentUrl}`);
+                                    await page.goto(currentUrl, { waitUntil: 'domcontentloaded' });
+                                } else {
                                     await page.waitForTimeout(2000);
-                                } catch (e) {
-                                    console.log(`   ⚠️ Force nav failed, falling back to tab click: ${e.message}`);
                                 }
                             }
                         }
@@ -728,7 +732,7 @@ class ScraperService {
                         });
                         await page.waitForTimeout(2000);
 
-                        console.log(`🔍 [START] Discovery: Extensive scrolling and expansion to reveal all items...`);
+                        console.log(`🔍 [START] Discovery: Extensive scrolling...`);
 
                         // PRIORITIZE COLLECTIONS TAB to ensure we find categories, not just a product dump
                         console.log('🔍 [START] Looking for "Collections" tab...');
@@ -763,9 +767,12 @@ class ScraperService {
                             const progressVal = Math.min(60, 20 + (i * 0.2));
                             if (onProgress && i % 5 === 0) onProgress(progressVal, `Exploring catalog depth (Scan ${i})...`);
 
+                            // Keyboard scroll is more reliable for infinite scroll triggers
+                            try { await page.keyboard.press('End'); } catch (e) { }
+
                             const iterationResults = await page.evaluate(async (currentUrl) => {
                                 // Dynamic scroll amount based on page height
-                                window.scrollBy(0, 1500);
+                                window.scrollBy(0, 1000);
                                 await new Promise(r => setTimeout(r, 1000)); // Increased wait for reliable loading
 
                                 // 1. Find and Click ANY "Load More" / "Show More" / "+" buttons
@@ -788,8 +795,14 @@ class ScraperService {
                                 const normalizedCurrent = currentUrl.replace(/\/$/, '');
 
                                 // Helper to detect generic product dumps
-                                const isGenericProductUrl = (url) => {
+                                const isGenericProductUrl = (url, text) => {
                                     const h = url.split('?')[0].replace(/\/$/, ''); // Handle query params and trailing slash
+                                    const t = text ? text.toLowerCase().trim() : '';
+
+                                    // Banned phrases
+                                    if (t.startsWith('products by') || t === 'products' || t === 'all products') return true;
+
+                                    // Banned URL patterns
                                     return /\/products\/\d+$/.test(h) || h.endsWith('/products') || h.endsWith('/all-products');
                                 };
 
@@ -799,13 +812,14 @@ class ScraperService {
                                         const isProductTab = text === 'products' || text.includes('all products') || text === 'produkte' || text === 'prodotti' || (text.includes('product') && !text.includes('project'));
                                         const href = el.href;
                                         // key fix: check isGenericProductUrl here too
-                                        return isProductTab && /\/(products|all-products)\//.test(href) && !isGenericProductUrl(href);
+                                        return isProductTab && /\/(products|all-products)\//.test(href) && !isGenericProductUrl(href, text);
                                     })
                                     .map(el => el.href);
 
                                 const collections = allLinks
-                                    .map(el => el.href)
-                                    .filter(href => {
+                                    .map(el => ({ href: el.href, text: el.innerText }))
+                                    .filter(item => {
+                                        const href = item.href;
                                         if (!href || !href.includes('architonic.com')) return false;
                                         const normalizedHref = href.replace(/\/$/, '');
                                         const isSamePage = normalizedHref === normalizedCurrent;
@@ -815,10 +829,11 @@ class ScraperService {
 
                                         // STRICTLY exclude generic headers/tabs that just list everything
                                         const h = href.replace(/\/$/, '');
-                                        const isUtility = h.endsWith('/collections') || !h.includes('/b/') || isGenericProductUrl(href);
+                                        const isUtility = h.endsWith('/collections') || !h.includes('/b/') || isGenericProductUrl(href, item.text);
 
                                         return !isSamePage && !href.includes('#') && isSubLink && !isUtility;
-                                    });
+                                    })
+                                    .map(i => i.href);
 
                                 const products = allLinks
                                     .map(el => el.href)
