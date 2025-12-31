@@ -1145,7 +1145,7 @@ class ScraperService {
 
         // Post-processing: Remove products from generic "merged" collections if they slipped through
         allProducts = allProducts.filter(p => {
-            const c = p.collection.toLowerCase();
+            const c = (p.collection || '').toLowerCase();
             return !c.startsWith('products by') && c !== 'products' && c !== 'all products';
         });
 
