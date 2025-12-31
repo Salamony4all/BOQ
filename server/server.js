@@ -448,6 +448,63 @@ const browserlessScraper = new BrowserlessScraper();
 const scrapingBeeScraper = new ScrapingBeeScraper();
 const dbManager = new ExcelDbManager();
 
+// --- Railway Sidecar Services ---
+const JS_SCRAPER_SERVICE_URL = process.env.JS_SCRAPER_SERVICE_URL; // e.g., https://js-scraper-service.railway.app
+const PYTHON_SCRAPER_SERVICE_URL = process.env.PYTHON_SERVICE_URL; // Already exists for Python scraper
+
+// Helper to check if JS scraper sidecar is available
+const isJsScraperAvailable = () => !!JS_SCRAPER_SERVICE_URL;
+const isPythonScraperAvailable = () => !!PYTHON_SCRAPER_SERVICE_URL;
+
+// Helper to call Railway JS scraper service
+async function callJsScraperService(endpoint, payload, timeout = 300000) {
+  if (!JS_SCRAPER_SERVICE_URL) {
+    throw new Error('JS_SCRAPER_SERVICE_URL not configured');
+  }
+  const url = `${JS_SCRAPER_SERVICE_URL}${endpoint}`;
+  console.log(`🌐 Calling JS Scraper Service: ${url}`);
+
+  const response = await axios.post(url, payload, {
+    timeout,
+    headers: { 'Content-Type': 'application/json' }
+  });
+  return response.data;
+}
+
+// Helper to poll task status from Railway service
+async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 600000) {
+  const startTime = Date.now();
+  const pollInterval = 2000; // 2 seconds
+
+  while (Date.now() - startTime < maxWaitMs) {
+    try {
+      const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/tasks/${taskId}`, { timeout: 10000 });
+      const task = response.data;
+
+      if (onProgress && task.progress && task.stage) {
+        onProgress(task.progress, task.stage, task.brandName);
+      }
+
+      if (task.status === 'completed') {
+        return task;
+      } else if (task.status === 'failed') {
+        throw new Error(task.error || 'JS Scraper task failed');
+      } else if (task.status === 'cancelled') {
+        throw new Error('Task was cancelled');
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    } catch (error) {
+      if (error.response?.status === 404) {
+        throw new Error('Task not found on JS Scraper service');
+      }
+      // Network error - wait and retry
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+  }
+  throw new Error('JS Scraper task timed out');
+}
+
 // --- Task Manager for Background Scraping ---
 const tasks = new Map();
 
@@ -688,6 +745,138 @@ app.post('/api/scrape-ai', async (req, res) => {
   } catch (error) {
     console.error('AI Scraping failed:', error);
     res.status(500).json({ error: 'AI Scraping failed', details: error.message });
+  }
+});
+
+// --- Railway JS Scraper Sidecar Endpoint (RECOMMENDED for Vercel) ---
+app.post('/api/scrape-railway', async (req, res) => {
+  try {
+    const { url, name, budgetTier = 'mid', origin = 'UNKNOWN', scraper = 'auto' } = req.body;
+
+    if (!url) {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    // Check if Railway JS scraper service is configured
+    if (!isJsScraperAvailable()) {
+      // Fallback: Try Python scraper if available
+      if (isPythonScraperAvailable()) {
+        console.log('⚠️ JS Scraper not configured, falling back to Python scraper...');
+        // Redirect to scrapling endpoint logic
+        return res.redirect(307, '/api/scrape-scrapling');
+      }
+
+      return res.status(503).json({
+        error: 'Scraping Service Unavailable',
+        details: 'Neither JS_SCRAPER_SERVICE_URL nor PYTHON_SERVICE_URL is configured. Please add one to your environment variables.',
+        configRequired: ['JS_SCRAPER_SERVICE_URL', 'PYTHON_SERVICE_URL']
+      });
+    }
+
+    console.log(`\n🚂 [Railway Sidecar] Delegating scrape to JS service: ${url}`);
+    console.log(`   Scraper mode: ${scraper}`);
+
+    // Create local task for tracking
+    const taskId = `railway_${Date.now()}`;
+    const isArchitonic = url.includes('architonic.com');
+    const initialStage = isArchitonic ? 'Delegating to Railway (Architonic)...' : 'Delegating to Railway JS scraper...';
+
+    tasks.set(taskId, {
+      id: taskId,
+      status: 'processing',
+      progress: 5,
+      stage: initialStage,
+      brandName: name || 'Detecting...',
+      delegatedTo: 'Railway JS Scraper'
+    });
+
+    // Run in background
+    (async () => {
+      try {
+        // Determine which endpoint to call based on scraper type
+        let endpoint = '/scrape';
+        if (scraper === 'structure') {
+          endpoint = '/scrape-structure';
+        } else if (scraper === 'architonic' || isArchitonic) {
+          endpoint = '/scrape-architonic';
+        }
+
+        // Start the scrape on Railway (async mode)
+        const startResult = await callJsScraperService(endpoint, { url, name, sync: false });
+
+        if (!startResult.taskId) {
+          throw new Error('Railway service did not return a taskId');
+        }
+
+        const railwayTaskId = startResult.taskId;
+        console.log(`   Railway task started: ${railwayTaskId}`);
+        tasks.set(taskId, { ...tasks.get(taskId), railwayTaskId, progress: 10, stage: 'Railway task started...' });
+
+        // Poll for completion
+        const progressCallback = (progress, stage, detectedName) => {
+          const currentTask = tasks.get(taskId);
+          if (!currentTask || currentTask.status === 'cancelled') return;
+          tasks.set(taskId, {
+            ...currentTask,
+            progress,
+            stage,
+            brandName: detectedName || currentTask.brandName
+          });
+        };
+
+        const completedTask = await pollJsScraperTask(railwayTaskId, progressCallback);
+
+        // Process completed result
+        const products = completedTask.products || [];
+        const brandNameFound = name || completedTask.brandInfo?.name || 'Unknown Brand';
+        const brandLogo = completedTask.brandInfo?.logo || '';
+
+        const id = Date.now();
+        const newBrand = {
+          id,
+          name: brandNameFound,
+          url,
+          origin,
+          budgetTier,
+          logo: brandLogo,
+          products,
+          createdAt: new Date(),
+          scrapedWith: `Railway-JS-${scraper === 'structure' ? 'Structure' : (isArchitonic ? 'Architonic' : 'Universal')}`
+        };
+
+        await brandStorage.saveBrand(newBrand);
+
+        tasks.set(taskId, {
+          id: taskId,
+          status: 'completed',
+          progress: 100,
+          stage: 'Railway Harvest Complete!',
+          brand: newBrand,
+          productCount: products.length
+        });
+
+        console.log(`✅ Railway task ${taskId} completed: ${products.length} products`);
+
+      } catch (error) {
+        console.error(`❌ Railway scrape failed:`, error.message);
+        tasks.set(taskId, {
+          id: taskId,
+          status: 'failed',
+          error: error.message
+        });
+      }
+    })();
+
+    res.json({
+      success: true,
+      message: 'Scraping delegated to Railway JS service',
+      taskId,
+      service: 'railway-js-scraper'
+    });
+
+  } catch (error) {
+    console.error('Railway scrape endpoint error:', error);
+    res.status(500).json({ error: 'Railway scraping failed', details: error.message });
   }
 });
 
