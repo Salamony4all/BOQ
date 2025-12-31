@@ -542,33 +542,91 @@ app.post('/api/scrape-brand', async (req, res) => {
     const origin = req.body.origin || 'UNKNOWN';
     const budgetTier = req.body.budgetTier || 'mid';
 
-    // Check cloud scrapers: prefer ScrapingBee (has anti-bot), then Browserless
-    // SPECIAL RULE: Amara Art is blocked by local firewall. MUST use cloud.
-    const isAmara = url && url.includes('amara-art.com');
+    // PRIORITY 1: Use Railway JS Scraper Service if available
+    if (JS_SCRAPER_SERVICE_URL) {
+      console.log('🚂 [scrape-brand] Delegating to Railway JS Scraper Service');
+      try {
+        const jsScraperAvailable = await isJsScraperAvailable();
+        if (jsScraperAvailable) {
+          const isArchitonic = url.toLowerCase().includes('architonic.com');
+          const scraperEndpoint = isArchitonic ? '/scrape-architonic' : '/scrape';
 
-    // Force ScrapingBee for Amara
-    let useScrapingBee = isVercel && scrapingBeeScraper.isConfigured();
+          const taskResult = await callJsScraperService(scraperEndpoint, { url, name, sync: false });
 
-    if (isAmara) {
-      console.log('🚨 DETECTED AMARA ART - FORCING CLOUD SCRAPER BYPASS 🚨');
-      // Ensure Key is present
-      if (!scrapingBeeScraper.isConfigured()) {
-        console.log('⚠️ Injecting missing ScrapingBee Key for bypass...');
-        process.env.SCRAPINGBEE_API_KEY = process.env.SCRAPINGBEE_API_KEY || '7XP4G1NCU7PG5TDR4Q8INNW9D4ZOLCUPUEHKTPM6PZEHKY1BR9JWZL2K5ZUZYHF1DFSQMY50L0AI6SPV';
-        scrapingBeeScraper.isConfigured(); // Re-check
+          if (taskResult.taskId) {
+            const taskId = `railway_brand_${taskResult.taskId}`;
+            tasks.set(taskId, {
+              id: taskId,
+              status: 'processing',
+              progress: 10,
+              stage: `Railway: ${isArchitonic ? 'Architonic' : 'Universal'} scraper started...`,
+              brandName: name,
+              railwayTaskId: taskResult.taskId
+            });
+
+            // Poll Railway task in background
+            (async () => {
+              try {
+                const result = await pollJsScraperTask(taskResult.taskId, (progress, stage) => {
+                  const currentTask = tasks.get(taskId);
+                  if (currentTask) {
+                    tasks.set(taskId, { ...currentTask, progress, stage: `Railway: ${stage}` });
+                  }
+                });
+
+                const products = result.products || [];
+                const brandNameFound = name || result.brandInfo?.name || 'Unknown Brand';
+                const brandLogo = result.brandInfo?.logo || '';
+
+                const id = Date.now();
+                const newBrand = {
+                  id,
+                  name: brandNameFound,
+                  url,
+                  origin,
+                  budgetTier,
+                  logo: brandLogo,
+                  products,
+                  createdAt: new Date(),
+                };
+
+                if (blobStoreAvailable) {
+                  try {
+                    await put(`brands/${id}.json`, JSON.stringify(newBrand), {
+                      access: 'public',
+                      contentType: 'application/json'
+                    });
+                  } catch (e) {
+                    console.error('Blob save error:', e);
+                  }
+                }
+
+                tasks.set(taskId, {
+                  ...tasks.get(taskId),
+                  status: 'completed',
+                  progress: 100,
+                  stage: 'Complete!',
+                  brand: newBrand
+                });
+              } catch (err) {
+                console.error('Railway task polling failed:', err);
+                tasks.set(taskId, {
+                  ...tasks.get(taskId),
+                  status: 'failed',
+                  error: err.message
+                });
+              }
+            })();
+
+            return res.json({ success: true, taskId, message: 'Railway scraping started' });
+          }
+        }
+      } catch (railwayError) {
+        console.warn('Railway service unavailable, falling back:', railwayError.message);
       }
-      useScrapingBee = true;
     }
 
-    const useBrowserless = (isVercel || (!useScrapingBee && browserlessScraper.isConfigured())) && browserlessScraper.isConfigured();
-
-    if (isVercel && !useScrapingBee && !useBrowserless) {
-      return res.status(503).json({
-        error: 'Scraping Unavailable - API Key Missing',
-        details: 'Cloud scraping requires SCRAPINGBEE_API_KEY or BROWSERLESS_API_KEY. Please add one to your Vercel environment variables, or run locally.',
-        isVercelLimitation: true
-      });
-    }
+    // PRIORITY 2: Check cloud scrapers: prefer ScrapingBee (has anti-bot), then Browserless
 
     // Start scraping in background
     const taskId = `scrape_${Date.now()}`;

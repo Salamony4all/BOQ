@@ -1,14 +1,14 @@
 # JS Scraper Service - Railway Dockerfile
 # Uses official Playwright image with all browser dependencies pre-installed
 
-FROM mcr.microsoft.com/playwright:v1.40.0-jammy
+FROM mcr.microsoft.com/playwright:v1.49.0-jammy
 
 WORKDIR /app
 
 # Copy package files
 COPY package*.json ./
 
-# Install dependencies
+# Install dependencies (matching Playwright version)
 RUN npm ci --only=production
 
 # Copy source code
