@@ -773,8 +773,7 @@ class ScraperService {
                             const iterationResults = await page.evaluate(async (currentUrl) => {
                                 // Dynamic scroll amount based on page height
                                 window.scrollBy(0, 1000);
-                                try { await page.waitForLoadState('networkidle', { timeout: 2000 }); } catch (e) { } // Wait for network to settle
-                                await new Promise(r => setTimeout(r, 500)); // Small buffer
+                                await new Promise(r => setTimeout(r, 1000)); // Wait for content to load
 
                                 // 1. Find and Click ANY "Load More" / "Show More" / "+" buttons
                                 const elements = Array.from(document.querySelectorAll('button, a, span, div'));
