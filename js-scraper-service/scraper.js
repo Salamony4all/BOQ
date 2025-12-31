@@ -715,27 +715,28 @@ class ScraperService {
                         let sameHeightCount = 0;
 
                         // Increased to 200 iterations to handle massive catalogs (up to ~10k items)
+                        // Increased to 200 iterations to handle massive catalogs
                         for (let i = 0; i < 200; i++) {
                             const progressVal = Math.min(60, 20 + (i * 0.2));
                             if (onProgress && i % 5 === 0) onProgress(progressVal, `Exploring catalog depth (Scan ${i})...`);
 
                             const iterationResults = await page.evaluate(async (currentUrl) => {
                                 // Dynamic scroll amount based on page height
-                                window.scrollBy(0, 2500);
-                                await new Promise(r => setTimeout(r, 400)); // Faster scroll
+                                window.scrollBy(0, 1500);
+                                await new Promise(r => setTimeout(r, 1000)); // Increased wait for reliable loading
 
                                 // 1. Find and Click ANY "Load More" / "Show More" / "+" buttons
                                 const elements = Array.from(document.querySelectorAll('button, a, span, div'));
                                 const loadMore = elements.find(el => {
                                     const t = el.innerText.toLowerCase().trim();
-                                    const isLoadText = t === 'load more' || t === 'show more' || t === 'more products' || t === 'mehr anzeign' || t === '+' || t.includes('view all');
+                                    const isLoadText = t === 'load more' || t === 'show more' || t === 'more products' || t === 'mehr anzeign' || t === '+' || t.includes('view all') || t.includes('show all');
                                     return isLoadText && el.offsetParent !== null; // Must be visible
                                 });
 
                                 if (loadMore && typeof loadMore.click === 'function') {
                                     try {
                                         loadMore.click();
-                                        await new Promise(r => setTimeout(r, 500)); // Wait for content
+                                        await new Promise(r => setTimeout(r, 1000)); // Wait for content
                                     } catch (e) { }
                                 }
 
@@ -757,8 +758,9 @@ class ScraperService {
                                         if (!href || !href.includes('architonic.com')) return false;
                                         const normalizedHref = href.replace(/\/$/, '');
                                         const isSamePage = normalizedHref === normalizedCurrent;
-                                        const isSubLink = href.includes('/collection/') || href.includes('/collections/') || href.includes('/category/') || href.includes('/product-group/');
-                                        const isUtility = href.endsWith('/collections') || href.endsWith('/products') || !href.includes('/b/');
+                                        // Broadened filter to ensure we catch EVERY category type, including some /products/ pages that act as categories
+                                        const isSubLink = href.includes('/collection/') || href.includes('/collections/') || href.includes('/category/') || href.includes('/product-group/') || (href.includes('/products/') && !href.includes('/p/'));
+                                        const isUtility = href.endsWith('/collections') || href.endsWith('/collections/') || (href.endsWith('/products') && !href.includes('/b/'));
                                         return !isSamePage && !href.includes('#') && isSubLink && !isUtility;
                                     });
 
@@ -769,12 +771,17 @@ class ScraperService {
                                 return { tabs, collections, products, height: document.body.scrollHeight };
                             }, request.url);
 
+                            const prevCount = discoveredSubLinks.size + discoveredProductLinks.size;
+
                             iterationResults.tabs.forEach(l => discoveredTabLinks.add(l));
                             iterationResults.collections.forEach(l => discoveredSubLinks.add(l));
                             iterationResults.products.forEach(l => discoveredProductLinks.add(l));
 
-                            // Breaker: Stop if no height change for 15 iterations (end of infinite scroll)
-                            if (iterationResults.height === lastHeight) {
+                            const newCount = discoveredSubLinks.size + discoveredProductLinks.size;
+                            const foundNewItems = newCount > prevCount;
+
+                            // Breaker: Stop if no height change AND no new items for 15 iterations (end of infinite scroll)
+                            if (iterationResults.height === lastHeight && !foundNewItems) {
                                 sameHeightCount++;
                                 if (sameHeightCount > 15) {
                                     console.log(`   ℹ️ Reached end of content (no expansion for 15 cycles).`);
