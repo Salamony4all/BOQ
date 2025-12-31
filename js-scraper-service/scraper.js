@@ -838,27 +838,50 @@ class ScraperService {
                             currentUrl.includes('/collection/') ||
                             currentUrl.includes('/category/');
 
-                        const allDiscoveryLinks = [...discoveredTabLinks, ...discoveredSubLinks];
-                        const uniqueProductLinks = [...discoveredProductLinks];
+                        // STRICT MODE: User requested "ONLY COLLECTIONS"
+                        // We strictly ignore generic tabs (like New Products, Projects) and individual featured items
+                        // We ONLY queue specific sub-collections found in the grid.
 
-                        console.log(`🔍 [START] Found ${discoveredTabLinks.size} product tabs, ${discoveredSubLinks.size} sub-collections, and ${uniqueProductLinks.length} direct products.`);
+                        // const allDiscoveryLinks = [...discoveredTabLinks, ...discoveredSubLinks]; <--- OLD
+                        const allDiscoveryLinks = [...discoveredSubLinks]; // <--- NEW: Only grid collections
+
+                        console.log(`🔍 [START] Found ${discoveredSubLinks.size} collections (ignoring tabs/featured items per strict mode).`);
 
                         if (allDiscoveryLinks.length > 0) {
                             await crawler.addRequests(allDiscoveryLinks.map(url => ({
                                 url,
                                 userData: { label: 'COLLECTION' }
                             })));
+                        } else {
+                            console.log('   ℹ️ No collections found in grid. Checking fallback...');
                         }
 
+                        // DISABLED: Do not queue individual products found on overview to avoid "Featured" category noise
+                        /*
+                        const uniqueProductLinks = [...discoveredProductLinks];
                         if (uniqueProductLinks.length > 0) {
                             await crawler.addRequests(uniqueProductLinks.map(url => ({
                                 url,
                                 userData: { label: 'PRODUCT', _brand: brandName, _coll: 'Featured' }
                             })));
                         }
+                        */
+                        const uniqueProductLinks = []; // Empty to prevent fallback triggering incorrectly if we have collections
 
-                        if (allDiscoveryLinks.length === 0 && uniqueProductLinks.length === 0 || isAlreadyDeep) {
-                            console.log(`🔍 [START] No sub-collections or products found, treating current page as collection.`);
+                        // Fallback: If absolutely NOTHING found, scrape current page
+                        if (allDiscoveryLinks.length === 0 && !isAlreadyDeep) {
+                            // check if we found products but ignored them?
+                            if (discoveredProductLinks.size > 0) {
+                                // If we have products but NO collections, maybe it IS a flat list brand.
+                                // In this edge case, we should probably scrape the products?
+                                // But User said "ONLY COLLECTIONS". 
+                                // If there are NO collections, treating it as one big collection containing the products is the only way to get data.
+                                console.log(`🔍 [START] No collections found, but found ${discoveredProductLinks.size} products. Treating main page as single collection.`);
+                                await crawler.addRequests([{ url: request.url, userData: { label: 'COLLECTION', singlePage: true } }]);
+                            } else {
+                                console.log(`🔍 [START] Ghost town. No collections or products found.`);
+                            }
+                        } else if (allDiscoveryLinks.length === 0 && isAlreadyDeep) {
                             await crawler.addRequests([{ url: request.url, userData: { label: 'COLLECTION', singlePage: true } }]);
                         }
                     } catch (err) {
