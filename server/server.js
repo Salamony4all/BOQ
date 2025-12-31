@@ -594,15 +594,12 @@ app.post('/api/scrape-brand', async (req, res) => {
                   createdAt: new Date(),
                 };
 
-                if (blobStoreAvailable) {
-                  try {
-                    await put(`brands/${id}.json`, JSON.stringify(newBrand), {
-                      access: 'public',
-                      contentType: 'application/json'
-                    });
-                  } catch (e) {
-                    console.error('Blob save error:', e);
-                  }
+                // Use centralized storage provider (handles KV, Blob, and Local)
+                try {
+                  await brandStorage.saveBrand(newBrand);
+                  console.log(`✅ Saved brand ${brandNameFound} (${products.length} products) to storage`);
+                } catch (e) {
+                  console.error('Storage save error:', e);
                 }
 
                 tasks.set(taskId, {
@@ -752,16 +749,12 @@ app.post('/api/scrape-ai', async (req, res) => {
                   createdAt: new Date(),
                 };
 
-                // Save to blob if available
-                if (blobStoreAvailable) {
-                  try {
-                    await put(`brands/${id}.json`, JSON.stringify(newBrand), {
-                      access: 'public',
-                      contentType: 'application/json'
-                    });
-                  } catch (e) {
-                    console.error('Blob save error:', e);
-                  }
+                // Use centralized storage provider
+                try {
+                  await brandStorage.saveBrand(newBrand);
+                  console.log(`✅ Saved AI-scraped brand ${brandNameFound} to storage`);
+                } catch (e) {
+                  console.error('Storage save error:', e);
                 }
 
                 tasks.set(taskId, {
