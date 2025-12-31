@@ -38,6 +38,10 @@ const PORT = 3001;
 // Initialize cleanup service
 const cleanupService = new CleanupService();
 
+// Check Blob Storage availability
+const blobStoreAvailable = !!process.env.BLOB_READ_WRITE_TOKEN;
+console.log(`📦 Blob Storage Available: ${blobStoreAvailable}`);
+
 // CORS configuration
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
