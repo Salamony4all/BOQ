@@ -216,9 +216,8 @@
   background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  max-height: 250px;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  /* max-height: 250px; Removed to prevent nested scroll */
+  /* overflow-y: auto; Removed for single main scroll */
   margin-top: 0.5rem;
 }
 
