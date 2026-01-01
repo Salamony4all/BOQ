@@ -42,6 +42,9 @@ const cleanupService = new CleanupService();
 const blobStoreAvailable = !!process.env.BLOB_READ_WRITE_TOKEN;
 console.log(`📦 Blob Storage Available: ${blobStoreAvailable}`);
 
+// Railway Sidecar Service URL (for image proxy delegation)
+const JS_SCRAPER_SERVICE_URL = process.env.JS_SCRAPER_SERVICE_URL;
+
 // CORS configuration
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
@@ -244,58 +247,79 @@ app.post('/api/cleanup', async (req, res) => {
   res.json({ success: true });
 });
 
-// Image proxy endpoint - fetches external images and returns base64
+// Image proxy endpoint - fetches external images and returns raw binary
+// This supports both browser display (<img> tags) and canvas loading (exports)
 app.get('/api/image-proxy', async (req, res) => {
   try {
     let imageUrl = req.query.url;
     if (!imageUrl) {
-      return res.status(400).json({ error: 'URL parameter required' });
+      return res.status(400).send('URL parameter required');
     }
 
-    // Attempt to decode URL if it looks like Base64 (doesn't start with http)
+    // Decode if base64 (standard for this app's frontend)
     if (!imageUrl.startsWith('http')) {
       try {
         imageUrl = Buffer.from(imageUrl, 'base64').toString('utf-8');
         if (!imageUrl.startsWith('http')) throw new Error('Invalid decoded URL');
       } catch (e) {
-        // If decoding fails but content is just a string, it might be an issue.
-        // But we assume the client is sending proper data.
+        console.error('Proxy URL decode failed:', e.message);
+        return res.status(400).send('Invalid URL format');
       }
     }
 
     let buffer;
     let contentType;
 
-    const isAmara = imageUrl.includes('amara-art.com');
-    // Check if we need to tunnel via ScrapingBee (Firewall Bypass)
-    if (isAmara && process.env.SCRAPINGBEE_API_KEY) {
-      // console.log(`[Proxy] Tunneling blocked image: ${imageUrl.substring(0, 50)}...`);
-      const apiKey = process.env.SCRAPINGBEE_API_KEY;
-      // Construct Direct API URL to avoid complex client logic for simple binary fetch
-      const sbUrl = `https://app.scrapingbee.com/api/v1?api_key=${apiKey}&url=${encodeURIComponent(imageUrl)}&render_js=false&block_ads=true`;
-
-      const sbRes = await axios.get(sbUrl, { responseType: 'arraybuffer' });
-      buffer = sbRes.data;
-      contentType = sbRes.headers['content-type'] || 'image/jpeg';
-    } else {
-      // Standard Direct Fetch
-      const response = await axios.get(imageUrl, {
-        responseType: 'arraybuffer',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-      });
-      buffer = response.data;
-      contentType = response.headers['content-type'] || 'image/jpeg';
+    // Delegate Architonic images to Railway (bypasses Vercel IP blocking)
+    if (imageUrl.includes('architonic.com') && JS_SCRAPER_SERVICE_URL) {
+      try {
+        const railwayProxyUrl = `${JS_SCRAPER_SERVICE_URL}/image-proxy?url=${encodeURIComponent(imageUrl)}`;
+        const response = await axios.get(railwayProxyUrl, {
+          responseType: 'arraybuffer',
+          timeout: 20000
+        });
+        buffer = response.data;
+        contentType = response.headers['content-type'] || 'image/jpeg';
+      } catch (railwayError) {
+        console.warn(`[Proxy] Railway delegation failed: ${railwayError.message}. Falling back to local.`);
+        // Fall through to direct fetch
+      }
     }
 
-    const base64 = Buffer.from(buffer).toString('base64');
-    const dataUrl = `data:${contentType};base64,${base64}`;
+    // Direct fetch if not Architonic or Railway failed
+    if (!buffer) {
+      const isAmara = imageUrl.includes('amara-art.com');
+      // Check if we need to tunnel via ScrapingBee (Firewall Bypass for Amara)
+      if (isAmara && process.env.SCRAPINGBEE_API_KEY) {
+        const apiKey = process.env.SCRAPINGBEE_API_KEY;
+        const sbUrl = `https://app.scrapingbee.com/api/v1?api_key=${apiKey}&url=${encodeURIComponent(imageUrl)}&render_js=false&block_ads=true`;
+        const sbRes = await axios.get(sbUrl, { responseType: 'arraybuffer' });
+        buffer = sbRes.data;
+        contentType = sbRes.headers['content-type'] || 'image/jpeg';
+      } else {
+        // Standard Direct Fetch
+        const response = await axios.get(imageUrl, {
+          responseType: 'arraybuffer',
+          timeout: 15000,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': new URL(imageUrl).origin
+          }
+        });
+        buffer = response.data;
+        contentType = response.headers['content-type'] || 'image/jpeg';
+      }
+    }
 
-    res.json({ dataUrl, contentType });
+    // Return RAW binary image (works for <img> tags AND canvas loading)
+    res.set('Content-Type', contentType);
+    res.set('Cache-Control', 'public, max-age=31536000');
+    res.set('Access-Control-Allow-Origin', '*');
+    res.send(buffer);
+
   } catch (error) {
     console.error('Image proxy error:', error.message);
-    res.status(500).json({ error: 'Failed to proxy image', details: error.message });
+    res.status(502).send('Failed to fetch image');
   }
 });
 
@@ -444,74 +468,6 @@ app.delete('/api/brands/:id', async (req, res) => {
   }
 });
 
-
-
-// Image Proxy to bypass hotlink protection (Architonic/Amara)
-app.get('/api/image-proxy', async (req, res) => {
-  try {
-    let { url } = req.query;
-    if (!url) return res.status(400).send('URL is required');
-
-    // Decode if base64 (standard for this app's frontend)
-    if (!url.startsWith('http')) {
-      try {
-        url = Buffer.from(url, 'base64').toString('utf-8');
-      } catch (e) {
-        console.error('Proxy URL decode failed, assuming raw:', e.message);
-      }
-    }
-
-    // Validate protocol
-    if (!url.startsWith('http')) {
-      return res.status(400).send('Invalid URL protocol');
-    }
-
-    // Delegate Architonic images to Railway (bypasses Vercel IP blocking)
-    if (url.includes('architonic.com') && JS_SCRAPER_SERVICE_URL) {
-      try {
-        const railwayProxyUrl = `${JS_SCRAPER_SERVICE_URL}/image-proxy?url=${encodeURIComponent(url)}`;
-        const response = await axios.get(railwayProxyUrl, {
-          responseType: 'arraybuffer',
-          timeout: 20000
-        });
-        res.set('Content-Type', response.headers['content-type']);
-        res.set('Cache-Control', 'public, max-age=31536000');
-        res.send(response.data);
-        return;
-      } catch (railwayError) {
-        console.warn(`[Proxy] Railway delegation failed: ${railwayError.message}. Falling back to local.`);
-      }
-    }
-
-    // Fallback: Direct fetch (works for non-Architonic images)
-    const response = await axios.get(url, {
-      responseType: 'arraybuffer',
-      timeout: 15000,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://www.architonic.com/',
-        'Sec-Fetch-Dest': 'image',
-        'Sec-Fetch-Mode': 'no-cors',
-        'Sec-Fetch-Site': 'cross-site',
-        'Pragma': 'no-cache',
-        'Cache-Control': 'no-cache'
-      }
-    });
-
-    res.set('Content-Type', response.headers['content-type']);
-    res.set('Cache-Control', 'public, max-age=31536000'); // Cache aggressively
-    res.send(response.data);
-
-  } catch (error) {
-    const status = error.response ? error.response.status : 502;
-    const msg = error.response ? error.response.statusText : error.message;
-    console.error(`[Proxy] Failed to fetch ${req.query.url}:`, msg);
-    res.status(status).send(`Error fetching image: ${msg}`);
-  }
-});
 
 const scraperService = new ScraperService();
 const structureScraper = new StructureScraper();
