@@ -590,15 +590,10 @@ class ScraperService {
 
         // Configure Crawlee to use in-memory storage (no filesystem)
         // This prevents ENOENT errors on Railway's ephemeral filesystem
-        const crawlerConfig = new Configuration({
-            storageClientOptions: {
-                localDataDirectory: null, // Disable file-based storage
-            },
-            persistStorage: false,
-        });
+        const config = Configuration.getGlobalConfig();
+        config.set('persistStorage', false);
 
         const crawler = new PlaywrightCrawler({
-            configuration: crawlerConfig,
             // === LOCAL MODE OPTIMIZATION ===
             maxConcurrency: 1, // Reduced to 1 for MAXIMUM STABILITY
             minConcurrency: 1,
