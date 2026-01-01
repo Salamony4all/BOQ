@@ -11,6 +11,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import axios from 'axios';
 import ScraperService from './scraper.js';
 import StructureScraper from './structureScraper.js';
 
