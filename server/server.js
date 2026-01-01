@@ -476,8 +476,8 @@ async function callJsScraperService(endpoint, payload, timeout = 300000) {
 }
 
 // Helper to poll task status from Railway service
-// ENHANCED: Increased timeout to 30 minutes and added resilience for long scrapes
-async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 1800000) {
+// ENHANCED: Increased timeout to 60 minutes for very large brand collections (300+ products)
+async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 3600000) {
   const startTime = Date.now();
   const pollInterval = 3000; // 3 seconds (slightly longer to reduce load)
   let consecutiveErrors = 0;
