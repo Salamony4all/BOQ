@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react';
+import { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import styles from '../styles/AddBrandModal.module.css';
 
 const ScrapingContext = createContext(null);
@@ -16,9 +16,92 @@ export function ScrapingProvider({ children }) {
         onError: null
     });
 
-
     const [successData, setSuccessData] = useState(null);
+    const pollingRef = useRef(null);
 
+    // Clear polling when unmounting
+    useEffect(() => {
+        return () => {
+            if (pollingRef.current) {
+                clearInterval(pollingRef.current);
+            }
+        };
+    }, []);
+
+    // Start scraping and begin polling - THIS PERSISTS AFTER MODAL CLOSES
+    const startScrapingWithTask = useCallback((brandName, taskId, onComplete, onError) => {
+        setSuccessData(null);
+
+        // Clear any existing polling
+        if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+        }
+
+        setScrapingState({
+            isActive: true,
+            brandName,
+            progress: 5,
+            stage: 'Connecting to server...',
+            taskId,
+            onComplete,
+            onError
+        });
+
+        // Start polling for task status - runs in context, not component
+        pollingRef.current = setInterval(async () => {
+            try {
+                const res = await fetch(`${API_BASE}/api/tasks/${taskId}`);
+                if (!res.ok) return;
+                const task = await res.json();
+
+                if (task.status === 'completed') {
+                    clearInterval(pollingRef.current);
+                    pollingRef.current = null;
+
+                    setScrapingState(prev => ({ ...prev, progress: 100, stage: 'Complete!' }));
+
+                    setTimeout(() => {
+                        // Show success modal
+                        setSuccessData({
+                            brandName: task.brandName || brandName,
+                            count: task.productCount || task.brand?.productCount || 0,
+                            enriched: task.summary?.enriched || 0
+                        });
+
+                        setScrapingState(prev => ({ ...prev, isActive: false }));
+
+                        // Call completion callback
+                        if (onComplete) onComplete(task);
+                    }, 500);
+
+                } else if (task.status === 'failed') {
+                    clearInterval(pollingRef.current);
+                    pollingRef.current = null;
+
+                    setScrapingState(prev => ({ ...prev, isActive: false }));
+                    if (onError) onError(new Error(task.error || 'Scraping failed'));
+
+                } else if (task.status === 'cancelled') {
+                    clearInterval(pollingRef.current);
+                    pollingRef.current = null;
+                    setScrapingState(prev => ({ ...prev, isActive: false }));
+
+                } else {
+                    // Update progress
+                    setScrapingState(prev => ({
+                        ...prev,
+                        progress: task.progress || prev.progress,
+                        stage: task.stage || prev.stage,
+                        brandName: task.brandName || prev.brandName
+                    }));
+                }
+            } catch (e) {
+                console.error('Background polling error:', e);
+            }
+        }, 2000);
+    }, []);
+
+    // Legacy startScraping for backward compatibility (will be replaced soon)
     const startScraping = (brandName, onComplete, onError, taskId = null) => {
         setSuccessData(null);
         setScrapingState({
@@ -42,17 +125,20 @@ export function ScrapingProvider({ children }) {
     };
 
     const cancelCurrentScrape = async () => {
-        if (!scrapingState.taskId) {
-            setScrapingState(prev => ({ ...prev, isActive: false }));
-            return;
+        // Stop polling first
+        if (pollingRef.current) {
+            clearInterval(pollingRef.current);
+            pollingRef.current = null;
         }
 
-        try {
-            await fetch(`${API_BASE}/api/tasks/${scrapingState.taskId}`, {
-                method: 'DELETE'
-            });
-        } catch (e) {
-            console.error('Failed to notify server of cancellation:', e);
+        if (scrapingState.taskId) {
+            try {
+                await fetch(`${API_BASE}/api/tasks/${scrapingState.taskId}`, {
+                    method: 'DELETE'
+                });
+            } catch (e) {
+                console.error('Failed to notify server of cancellation:', e);
+            }
         }
 
         setScrapingState({
@@ -116,13 +202,14 @@ export function ScrapingProvider({ children }) {
         <ScrapingContext.Provider value={{
             ...scrapingState,
             startScraping,
+            startScrapingWithTask,
             updateProgress,
             completeScraping,
             failScraping,
             cancelCurrentScrape
         }}>
             {children}
-            {/* Global Floating Progress Bar */}
+            {/* Global Floating Progress Bar - Always visible during scraping */}
             <div className={`${styles.scrapingContainer} ${scrapingState.isActive ? styles.active : ''} ${successData ? styles.success : ''}`}>
                 {scrapingState.isActive && !successData && (
                     <div className={styles.minimizedBarContent}>

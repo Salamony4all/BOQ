@@ -19,8 +19,8 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
     const [deletingId, setDeletingId] = useState(null);
     const fileInputRef = useRef(null);
 
-    // Global scraping context
-    const { isActive: isScrapingActive, startScraping, updateProgress, completeScraping, failScraping } = useScraping();
+    // Global scraping context - polling is handled by context, not this component
+    const { isActive: isScrapingActive, startScrapingWithTask, failScraping } = useScraping();
 
     useEffect(() => {
         if (isOpen) {
@@ -46,19 +46,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
         e.preventDefault();
         setLoading(true);
 
-        // Start global scraping indicator (initially without taskId, will update when received)
-        startScraping(name, (data) => {
-            // On complete callback
-            if (data.success) {
-                onBrandAdded(data.brand);
-                fetchBrands(); // Refresh list
-            }
-        }, (error) => {
-            // On error callback
-            alert('Scraping failed: ' + error.message);
-        });
-
-        // Close the modal - scraping continues in background via global context
+        // Close the modal immediately - scraping continues in background
         onClose();
 
         try {
@@ -77,47 +65,20 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
             const startData = await res.json();
             const taskId = startData.taskId;
 
-            // Update context with taskId so it can be cancelled
-            startScraping(name, (data) => {
-                if (data.success) {
-                    onBrandAdded(data.brand);
-                    fetchBrands();
+            // Start scraping with task - CONTEXT handles polling, not this component!
+            // This means scraping continues even after modal is closed
+            startScrapingWithTask(name, taskId, (data) => {
+                // On complete callback
+                if (data.success !== false) {
+                    onBrandAdded(data.brand || data);
+                    fetchBrands(); // Refresh list
                 }
             }, (error) => {
-                alert('Scraping failed: ' + error.message);
-            }, taskId);
+                // On error callback
+                console.error('Scraping failed:', error.message);
+            });
 
-            // Poll for status
-            const pollInterval = setInterval(async () => {
-                try {
-                    const statusRes = await fetch(`${API_BASE}/api/tasks/${taskId}`);
-                    if (!statusRes.ok) return;
-                    const task = await statusRes.json();
-
-                    if (task.status === 'completed') {
-                        clearInterval(pollInterval);
-                        updateProgress(100, 'Complete!');
-                        setTimeout(() => {
-                            setLoading(false);
-                            onBrandAdded(task.brand);
-                            completeScraping(task);
-                            fetchBrands();
-                        }, 500);
-                    } else if (task.status === 'failed') {
-                        clearInterval(pollInterval);
-                        setLoading(false);
-                        failScraping(new Error(task.error || 'Scraping failed'));
-                    } else if (task.status === 'cancelled') {
-                        clearInterval(pollInterval);
-                        setLoading(false);
-                    } else {
-                        // Update progress from server task
-                        updateProgress(task.progress || 50, task.stage || 'Processing...', task.brandName);
-                    }
-                } catch (e) {
-                    console.error('Polling error:', e);
-                }
-            }, 2000);
+            setLoading(false);
 
         } catch (error) {
             console.error('Scraping Error:', error);
