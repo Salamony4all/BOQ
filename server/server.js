@@ -476,7 +476,7 @@ const scrapingBeeScraper = new ScrapingBeeScraper();
 const dbManager = new ExcelDbManager();
 
 // --- Railway Sidecar Services ---
-const JS_SCRAPER_SERVICE_URL = process.env.JS_SCRAPER_SERVICE_URL; // e.g., https://js-scraper-service.railway.app
+// JS_SCRAPER_SERVICE_URL is defined at the top of file for image proxy
 const PYTHON_SCRAPER_SERVICE_URL = process.env.PYTHON_SERVICE_URL; // Already exists for Python scraper
 
 // Helper to check if JS scraper sidecar is available
