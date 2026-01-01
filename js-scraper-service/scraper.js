@@ -1185,52 +1185,79 @@ class ScraperService {
 
                 } else if (label === 'PRODUCT') {
                     const { _brand, _coll } = request.userData;
+
+                    // ENHANCED: Wait longer for full page load including images
                     await page.waitForLoadState('domcontentloaded');
-                    await page.waitForSelector('h1', { timeout: 10000 }).catch(() => { });
+                    await page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
+
+                    // Wait for h1 with longer timeout
+                    await page.waitForSelector('h1', { timeout: 15000 }).catch(() => { });
+
+                    // Additional wait for images to render
+                    await page.waitForTimeout(2000);
 
                     const name = await page.$eval('h1', el => el.innerText.trim()).catch(() => '');
 
-                    // Improved image detection: Prioritize variant-specific images (opacity-100)
-                    const img = await page.evaluate(() => {
-                        const allImgs = Array.from(document.querySelectorAll('img'));
-
-                        // 1. Target the ACTIVE carousel image (usually has opacity-100 and product ID in URL)
-                        const activeVariantImg = allImgs.find(i =>
-                            (i.classList.contains('opacity-100') || i.classList.contains('active')) &&
-                            i.src.includes('architonic.com') &&
-                            !i.src.includes('/family/')
-                        );
-                        if (activeVariantImg) return activeVariantImg.src;
-
-                        // 2. Look for images with '/product/' in URL (specific variants)
-                        const productImg = allImgs.find(i =>
-                            i.src.includes('/product/') &&
-                            (i.classList.contains('object-contain') || i.width > 200)
-                        );
-                        if (productImg) return productImg.src;
-
-                        // 3. Fallback to existing selectors
-                        const selectors = [
-                            '#product-page section img.opacity-100',
-                            '.product-gallery__main-image img',
-                            '.gallery__image img',
-                            'img[itemprop="image"]',
-                            '.product-image img',
-                            '.main-image img',
-                            'main img[src*="/product/"]'
-                        ];
-                        for (const sel of selectors) {
-                            const el = document.querySelector(sel);
-                            if (el && el.src && el.src.startsWith('http') && !el.src.includes('/family/')) return el.src;
+                    // ENHANCED: More aggressive image detection with multiple retries
+                    let img = '';
+                    for (let attempt = 0; attempt < 3 && !img; attempt++) {
+                        if (attempt > 0) {
+                            await page.waitForTimeout(1500); // Wait before retry
+                            console.log(`   🔄 Image retry ${attempt + 1}/3 for ${name}`);
                         }
 
-                        // 4. Last fallback (avoid /family/ if possible)
-                        const anyImg = allImgs.find(i => i.width > 300 && i.src.startsWith('http') && !i.src.includes('/family/'));
-                        if (anyImg) return anyImg.src;
+                        img = await page.evaluate(() => {
+                            const allImgs = Array.from(document.querySelectorAll('img'));
 
-                        const emergencyFallback = allImgs.find(i => i.width > 300 && i.src.startsWith('http'));
-                        return emergencyFallback ? emergencyFallback.src : '';
-                    });
+                            // 1. Target the ACTIVE carousel image (usually has opacity-100 and product ID in URL)
+                            const activeVariantImg = allImgs.find(i =>
+                                (i.classList.contains('opacity-100') || i.classList.contains('active')) &&
+                                i.src.includes('architonic.com') &&
+                                !i.src.includes('/family/')
+                            );
+                            if (activeVariantImg && activeVariantImg.naturalWidth > 0) return activeVariantImg.src;
+
+                            // 2. Look for images with '/product/' in URL (specific variants)
+                            const productImg = allImgs.find(i =>
+                                i.src.includes('/product/') &&
+                                (i.classList.contains('object-contain') || i.width > 200) &&
+                                i.naturalWidth > 0
+                            );
+                            if (productImg) return productImg.src;
+
+                            // 3. Look for any large image on architonic domain
+                            const archImg = allImgs.find(i =>
+                                i.src.includes('architonic.com') &&
+                                !i.src.includes('/logo') &&
+                                !i.src.includes('/family/') &&
+                                (i.naturalWidth > 200 || i.width > 200)
+                            );
+                            if (archImg) return archImg.src;
+
+                            // 4. Fallback to existing selectors
+                            const selectors = [
+                                '#product-page section img.opacity-100',
+                                '.product-gallery__main-image img',
+                                '.gallery__image img',
+                                'img[itemprop="image"]',
+                                '.product-image img',
+                                '.main-image img',
+                                'main img[src*="/product/"]',
+                                'img[src*="media.architonic.com"]'
+                            ];
+                            for (const sel of selectors) {
+                                const el = document.querySelector(sel);
+                                if (el && el.src && el.src.startsWith('http') && !el.src.includes('/family/')) return el.src;
+                            }
+
+                            // 5. Last fallback (avoid /family/ if possible)
+                            const anyImg = allImgs.find(i => i.width > 300 && i.src.startsWith('http') && !i.src.includes('/family/'));
+                            if (anyImg) return anyImg.src;
+
+                            const emergencyFallback = allImgs.find(i => i.width > 300 && i.src.startsWith('http'));
+                            return emergencyFallback ? emergencyFallback.src : '';
+                        });
+                    }
 
                     if (onProgress && name) {
                         const prog = Math.min(95, 30 + (allProducts.length * 0.4));
