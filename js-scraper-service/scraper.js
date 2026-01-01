@@ -761,32 +761,40 @@ class ScraperService {
                         let lastHeight = 0;
                         let sameHeightCount = 0;
 
-                        // Increased to 200 iterations to handle massive catalogs (up to ~10k items)
-                        // Increased to 200 iterations to handle massive catalogs
-                        for (let i = 0; i < 200; i++) {
-                            const progressVal = Math.min(60, 20 + (i * 0.2));
-                            if (onProgress && i % 5 === 0) onProgress(progressVal, `Exploring catalog depth (Scan ${i})...`);
+                        // ENHANCED: Increased to 300 iterations to handle massive catalogs (40+ categories)
+                        for (let i = 0; i < 300; i++) {
+                            const progressVal = Math.min(60, 20 + (i * 0.15));
+                            if (onProgress && i % 10 === 0) onProgress(progressVal, `Discovering collections (Scan ${i})...`);
 
                             // Keyboard scroll is more reliable for infinite scroll triggers
                             try { await page.keyboard.press('End'); } catch (e) { }
 
+                            // Wait longer between scrolls for lazy loading
+                            await page.waitForTimeout(800);
+
                             const iterationResults = await page.evaluate(async (currentUrl) => {
                                 // Dynamic scroll amount based on page height
-                                window.scrollBy(0, 1000);
-                                await new Promise(r => setTimeout(r, 1000)); // Wait for content to load
+                                window.scrollBy(0, 1500);
+                                await new Promise(r => setTimeout(r, 800)); // Wait for content to load
 
-                                // 1. Find and Click ANY "Load More" / "Show More" / "+" buttons
-                                const elements = Array.from(document.querySelectorAll('button, a, span, div'));
+                                // 1. Find and Click ANY "Load More" / "Show More" / "+" buttons - EXPANDED patterns
+                                const elements = Array.from(document.querySelectorAll('button, a, span, div[role="button"]'));
                                 const loadMore = elements.find(el => {
                                     const t = el.innerText.toLowerCase().trim();
-                                    const isLoadText = t === 'load more' || t === 'show more' || t === 'more products' || t === 'mehr anzeign' || t === '+' || t.includes('view all') || t.includes('show all');
+                                    const isLoadText = t === 'load more' || t === 'show more' || t === 'more products' ||
+                                        t === 'mehr laden' || t === 'mehr anzeigen' || t === 'plus' || t === '+' ||
+                                        t.includes('view all') || t.includes('show all') || t.includes('view more') ||
+                                        t.includes('more collections') || t.includes('carica altri') || t.includes('afficher plus');
                                     return isLoadText && el.offsetParent !== null; // Must be visible
                                 });
 
                                 if (loadMore && typeof loadMore.click === 'function') {
                                     try {
+                                        loadMore.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                        await new Promise(r => setTimeout(r, 300));
                                         loadMore.click();
-                                        await new Promise(r => setTimeout(r, 1000)); // Wait for content
+                                        await new Promise(r => setTimeout(r, 1500)); // Wait for content
+                                        console.log('   🔄 Clicked Load More button');
                                     } catch (e) { }
                                 }
 
@@ -851,11 +859,11 @@ class ScraperService {
                             const newCount = discoveredSubLinks.size + discoveredProductLinks.size;
                             const foundNewItems = newCount > prevCount;
 
-                            // Breaker: Stop if no height change AND no new items for 30 iterations (end of infinite scroll)
+                            // Breaker: Stop if no height change AND no new items for 40 iterations (more patience)
                             if (iterationResults.height === lastHeight && !foundNewItems) {
                                 sameHeightCount++;
-                                if (sameHeightCount > 30) {
-                                    console.log(`   ℹ️ Reached end of content (no expansion for 30 cycles).`);
+                                if (sameHeightCount > 40) {
+                                    console.log(`   ✅ Category discovery complete (no expansion for 40 cycles).`);
                                     break;
                                 }
                             } else {
@@ -864,9 +872,46 @@ class ScraperService {
                             }
 
                             // Log periodically
-                            if (i % 20 === 0) console.log(`   Stats: ${discoveredSubLinks.size} colls, ${discoveredProductLinks.size} prods`);
+                            if (i % 25 === 0) console.log(`   📊 Discovery stats: ${discoveredSubLinks.size} collections found...`);
                         }
-                        await page.evaluate(() => window.scrollTo(0, 0));
+
+                        // ENHANCED: Final re-scan pass to ensure all collections are in DOM
+                        console.log(`   🔄 Final re-scan pass for category discovery...`);
+                        await page.evaluate(async () => {
+                            // Quick scroll through entire page to ensure all content is loaded
+                            const totalHeight = document.body.scrollHeight;
+                            for (let pos = 0; pos < totalHeight; pos += 2000) {
+                                window.scrollTo(0, pos);
+                                await new Promise(r => setTimeout(r, 300));
+                            }
+                            // Scroll to bottom and wait
+                            window.scrollTo(0, document.body.scrollHeight);
+                            await new Promise(r => setTimeout(r, 1000));
+                        });
+
+                        // Collect any remaining links after re-scan
+                        const finalLinks = await page.evaluate((currentUrl) => {
+                            const allLinks = Array.from(document.querySelectorAll('a'));
+                            const normalizedCurrent = currentUrl.replace(/\/$/, '');
+
+                            return allLinks
+                                .map(el => ({ href: el.href, text: el.innerText }))
+                                .filter(item => {
+                                    const href = item.href;
+                                    if (!href || !href.includes('architonic.com')) return false;
+                                    const normalizedHref = href.replace(/\/$/, '');
+                                    const isSamePage = normalizedHref === normalizedCurrent;
+                                    const isSubLink = href.includes('/collection/') && !href.includes('#');
+                                    const h = href.replace(/\/$/, '');
+                                    const isUtility = h.endsWith('/collections') || !h.includes('/b/');
+                                    return !isSamePage && isSubLink && !isUtility;
+                                })
+                                .map(i => i.href);
+                        }, request.url);
+
+                        // Add any new collections from final scan
+                        finalLinks.forEach(l => discoveredSubLinks.add(l));
+                        console.log(`   ✅ Total collections discovered: ${discoveredSubLinks.size}`);
 
                         // 0. Priority: Is the current URL already a products or collection page?
                         const requestUrl = request.url;
@@ -946,49 +991,100 @@ class ScraperService {
                     }
 
                     // Architonic Infinite Scroll Implementation: REQUIRED even for small collections
+                    // ENHANCED: More aggressive scrolling for large collections (e.g., TABLE with 114 products)
                     console.log(`   📜 Scrolling gallery: ${collectionName}...`);
                     await page.evaluate(async () => {
                         let lastCount = 0;
                         let stableCycles = 0;
+                        let lastHeight = 0;
 
-                        for (let i = 0; i < 100; i++) {
-                            window.scrollBy(0, 2000);
-                            await new Promise(r => setTimeout(r, 1000));
+                        // Increased from 100 to 200 iterations for large collections
+                        for (let i = 0; i < 200; i++) {
+                            // Scroll in larger chunks
+                            window.scrollBy(0, 1500);
+                            await new Promise(r => setTimeout(r, 800));
 
-                            // Robust 'Load More' detection
-                            const buttons = Array.from(document.querySelectorAll('button, a, span[role="button"]'));
+                            // Also try keyboard scroll to trigger lazy loading
+                            try {
+                                document.dispatchEvent(new KeyboardEvent('keydown', { key: 'End' }));
+                            } catch (e) { }
+
+                            await new Promise(r => setTimeout(r, 700));
+
+                            // Robust 'Load More' detection - EXPANDED patterns
+                            const buttons = Array.from(document.querySelectorAll('button, a, span[role="button"], div[role="button"]'));
                             const loadMore = buttons.find(el => {
-                                const t = el.innerText.toLowerCase();
+                                const t = el.innerText.toLowerCase().trim();
                                 const isVisible = el.offsetParent !== null;
                                 return isVisible && (
                                     t === 'load more' ||
+                                    t === 'mehr laden' ||
+                                    t === 'plus' ||
+                                    t === '+' ||
                                     t.includes('show more') ||
+                                    t.includes('view more') ||
+                                    t.includes('more products') ||
                                     t.includes('más results') ||
-                                    t.includes('produkte laden')
+                                    t.includes('carica altri') ||
+                                    t.includes('produkte laden') ||
+                                    t.includes('afficher plus')
                                 );
                             });
 
                             if (loadMore) {
                                 try {
-                                    loadMore.scrollIntoView();
+                                    loadMore.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    await new Promise(r => setTimeout(r, 300));
                                     loadMore.click();
-                                    await new Promise(r => setTimeout(r, 1500));
+                                    await new Promise(r => setTimeout(r, 2000)); // Longer wait after click
                                     stableCycles = 0; // Reset as we triggered a load
+                                    console.log('   🔄 Clicked Load More button');
                                 } catch (e) { }
                             } else {
                                 // Check if link count is growing
                                 const currentCount = document.querySelectorAll('a[href*="/p/"], a[href*="/product/"]').length;
-                                if (currentCount === lastCount) {
+                                const currentHeight = document.body.scrollHeight;
+
+                                if (currentCount === lastCount && currentHeight === lastHeight) {
                                     stableCycles++;
                                 } else {
                                     stableCycles = 0;
                                 }
                                 lastCount = currentCount;
+                                lastHeight = currentHeight;
 
-                                if (stableCycles >= 3) break; // Finished loading
+                                // INCREASED from 3 to 8 - more patient waiting for slow-loading content
+                                if (stableCycles >= 8) {
+                                    console.log(`   ✅ Scroll complete: ${currentCount} products found after ${i} iterations`);
+                                    break;
+                                }
+                            }
+
+                            // Log progress every 25 iterations
+                            if (i % 25 === 0 && i > 0) {
+                                console.log(`   📊 Scroll iteration ${i}: ${lastCount} products so far...`);
                             }
                         }
+
+                        // DO NOT scroll to top - it may unload lazy content
                     });
+
+                    // ENHANCED: Final re-scan pass to ensure all products are in DOM
+                    console.log(`   🔄 Final re-scan pass for ${collectionName}...`);
+                    await page.evaluate(async () => {
+                        // Quick scroll through entire page to ensure all content is loaded
+                        const totalHeight = document.body.scrollHeight;
+                        for (let pos = 0; pos < totalHeight; pos += 2000) {
+                            window.scrollTo(0, pos);
+                            await new Promise(r => setTimeout(r, 300));
+                        }
+                        // Scroll to bottom and wait
+                        window.scrollTo(0, document.body.scrollHeight);
+                        await new Promise(r => setTimeout(r, 1000));
+                    });
+
+                    // Wait for any final lazy loading
+                    await page.waitForTimeout(2000);
 
                     // Flexible match for product links: Architonic uses /en/p/, /p/, or /product/
                     const productLinks = await page.$$eval('a', (els) => {
