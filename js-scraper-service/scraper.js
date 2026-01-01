@@ -1114,6 +1114,75 @@ class ScraperService {
                         console.log(`   ✅ Enqueued ${uniqueLinks.length} products from ${collectionName}`);
                     }
 
+                    // === PAGINATION HANDLING ===
+                    // Architonic uses page numbers (1, 2, 3...) at the bottom of collection pages
+                    // Only look for pagination if this is NOT already a paginated request (avoid infinite loop)
+                    const isAlreadyPaginated = request.userData._paginated;
+                    if (!isAlreadyPaginated) {
+                        const paginationLinks = await page.evaluate((currentUrl) => {
+                            const links = [];
+                            // Look for pagination container
+                            const paginationSelectors = [
+                                'nav[aria-label*="pagination"] a',
+                                '.pagination a',
+                                '[class*="pagination"] a',
+                                'a[href*="page="]',
+                                'a[href*="/page/"]',
+                                // Numbered page links (1, 2, 3...)
+                                'a[aria-label*="Page"]',
+                                // Next arrows
+                                'a[rel="next"]',
+                                'a[aria-label="Next"]',
+                                'a[aria-label="next page"]'
+                            ];
+
+                            for (const sel of paginationSelectors) {
+                                document.querySelectorAll(sel).forEach(el => {
+                                    const href = el.href;
+                                    if (href &&
+                                        href.includes('architonic.com') &&
+                                        href.includes('/collection/') &&
+                                        !href.includes('#') &&
+                                        href !== currentUrl) {
+                                        links.push(href);
+                                    }
+                                });
+                            }
+
+                            // Also look for numeric page links in any element
+                            const allLinks = Array.from(document.querySelectorAll('a'));
+                            allLinks.forEach(el => {
+                                const text = el.innerText.trim();
+                                const href = el.href;
+                                // Match single or double digit page numbers
+                                if (/^\d{1,2}$/.test(text) &&
+                                    href &&
+                                    href.includes('architonic.com') &&
+                                    href.includes('/collection/') &&
+                                    !href.includes('#')) {
+                                    links.push(href);
+                                }
+                            });
+
+                            return [...new Set(links)];
+                        }, request.url);
+
+                        if (paginationLinks.length > 0) {
+                            console.log(`   📄 Found ${paginationLinks.length} pagination pages in ${collectionName}`);
+                            // Queue pagination pages
+                            for (const pageUrl of paginationLinks) {
+                                await crawler.addRequests([{
+                                    url: pageUrl,
+                                    userData: {
+                                        label: 'COLLECTION',
+                                        _paginated: true  // Mark as paginated to avoid re-detecting pagination
+                                    }
+                                }]);
+                            }
+                            console.log(`   ✅ Queued ${paginationLinks.length} pagination pages`);
+                        }
+                    }
+
                 } else if (label === 'PRODUCT') {
                     const { _brand, _coll } = request.userData;
                     await page.waitForLoadState('domcontentloaded');
