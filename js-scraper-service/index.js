@@ -30,8 +30,8 @@ const tasks = new Map();
 
 // ===================== HEALTH CHECK =====================
 app.get('/health', (req, res) => {
-    res.json({ 
-        status: 'OK', 
+    res.json({
+        status: 'OK',
         service: 'js-scraper-service',
         timestamp: new Date().toISOString(),
         scrapers: ['universal', 'architonic', 'structure']
@@ -61,7 +61,7 @@ app.delete('/tasks/:id', (req, res) => {
 app.post('/scrape', async (req, res) => {
     try {
         const { url, name, sync = false } = req.body;
-        
+
         if (!url) {
             return res.status(400).json({ error: 'URL is required' });
         }
@@ -82,15 +82,15 @@ app.post('/scrape', async (req, res) => {
 
         // Async mode - return task ID immediately
         const taskId = `js_scrape_${Date.now()}`;
-        const initialStage = url.includes('architonic.com') 
-            ? 'Initializing Architonic crawler...' 
+        const initialStage = url.includes('architonic.com')
+            ? 'Initializing Architonic crawler...'
             : 'Initializing universal scraper...';
-        
-        tasks.set(taskId, { 
-            id: taskId, 
-            status: 'processing', 
-            progress: 10, 
-            stage: initialStage, 
+
+        tasks.set(taskId, {
+            id: taskId,
+            status: 'processing',
+            progress: 10,
+            stage: initialStage,
             brandName: name || 'Detecting...',
             startedAt: new Date().toISOString()
         });
@@ -111,7 +111,7 @@ app.post('/scrape', async (req, res) => {
                 progressCallback.isCancelled = () => tasks.get(taskId)?.status === 'cancelled';
 
                 const result = await scraperService.scrapeBrand(url, progressCallback);
-                
+
                 const products = result.products || [];
                 const brandName = name || result.brandInfo?.name || 'Unknown Brand';
                 const brandLogo = result.brandInfo?.logo || '';
@@ -131,9 +131,9 @@ app.post('/scrape', async (req, res) => {
 
             } catch (error) {
                 console.error(`❌ Task ${taskId} failed:`, error.message);
-                tasks.set(taskId, { 
-                    id: taskId, 
-                    status: 'failed', 
+                tasks.set(taskId, {
+                    id: taskId,
+                    status: 'failed',
                     error: error.message,
                     failedAt: new Date().toISOString()
                 });
@@ -156,7 +156,7 @@ app.post('/scrape', async (req, res) => {
 app.post('/scrape-structure', async (req, res) => {
     try {
         const { url, name, sync = false } = req.body;
-        
+
         if (!url) {
             return res.status(400).json({ error: 'URL is required' });
         }
@@ -177,11 +177,11 @@ app.post('/scrape-structure', async (req, res) => {
 
         // Async mode
         const taskId = `structure_${Date.now()}`;
-        tasks.set(taskId, { 
-            id: taskId, 
-            status: 'processing', 
-            progress: 10, 
-            stage: 'Initializing structure harvester...', 
+        tasks.set(taskId, {
+            id: taskId,
+            status: 'processing',
+            progress: 10,
+            stage: 'Initializing structure harvester...',
             brandName: name || 'Detecting...',
             startedAt: new Date().toISOString()
         });
@@ -202,7 +202,7 @@ app.post('/scrape-structure', async (req, res) => {
                 progressCallback.isCancelled = () => tasks.get(taskId)?.status === 'cancelled';
 
                 const result = await structureScraper.scrapeBrand(url, name, progressCallback);
-                
+
                 const products = result.products || [];
                 const brandName = name || result.brandInfo?.name || 'Unknown Brand';
 
@@ -221,9 +221,9 @@ app.post('/scrape-structure', async (req, res) => {
 
             } catch (error) {
                 console.error(`❌ Structure task ${taskId} failed:`, error.message);
-                tasks.set(taskId, { 
-                    id: taskId, 
-                    status: 'failed', 
+                tasks.set(taskId, {
+                    id: taskId,
+                    status: 'failed',
                     error: error.message,
                     failedAt: new Date().toISOString()
                 });
@@ -246,7 +246,7 @@ app.post('/scrape-structure', async (req, res) => {
 app.post('/scrape-architonic', async (req, res) => {
     try {
         const { url, name, sync = false } = req.body;
-        
+
         if (!url || !url.includes('architonic.com')) {
             return res.status(400).json({ error: 'Valid Architonic URL is required' });
         }
@@ -266,11 +266,11 @@ app.post('/scrape-architonic', async (req, res) => {
 
         // Async mode
         const taskId = `architonic_${Date.now()}`;
-        tasks.set(taskId, { 
-            id: taskId, 
-            status: 'processing', 
-            progress: 10, 
-            stage: 'Crawling Architonic collection...', 
+        tasks.set(taskId, {
+            id: taskId,
+            status: 'processing',
+            progress: 10,
+            stage: 'Crawling Architonic collection...',
             brandName: name || 'Detecting...',
             startedAt: new Date().toISOString()
         });
@@ -291,7 +291,7 @@ app.post('/scrape-architonic', async (req, res) => {
                 progressCallback.isCancelled = () => tasks.get(taskId)?.status === 'cancelled';
 
                 const result = await scraperService.scrapeArchitonic(url, progressCallback);
-                
+
                 const products = result.products || [];
                 const brandName = name || result.brandInfo?.name || 'Architonic Brand';
 
@@ -310,9 +310,9 @@ app.post('/scrape-architonic', async (req, res) => {
 
             } catch (error) {
                 console.error(`❌ Architonic task ${taskId} failed:`, error.message);
-                tasks.set(taskId, { 
-                    id: taskId, 
-                    status: 'failed', 
+                tasks.set(taskId, {
+                    id: taskId,
+                    status: 'failed',
                     error: error.message,
                     failedAt: new Date().toISOString()
                 });
@@ -328,6 +328,50 @@ app.post('/scrape-architonic', async (req, res) => {
     } catch (error) {
         console.error('Architonic scrape endpoint error:', error);
         res.status(500).json({ error: 'Architonic scraping failed', details: error.message });
+    }
+});
+
+
+// ===================== IMAGE PROXY =====================
+app.get('/image-proxy', async (req, res) => {
+    try {
+        const { url } = req.query;
+        if (!url) return res.status(400).send('URL is required');
+
+        // Note: URL decoding happens automatically by Express query parser usually,
+        // but if double encoded or base64 passed, handle it.
+        // The Vercel app will likely pass the raw Architonic URL or base64.
+
+        let targetUrl = url;
+        // Try decoding if it looks like base64 and not http
+        if (!targetUrl.startsWith('http')) {
+            try {
+                targetUrl = Buffer.from(targetUrl, 'base64').toString('utf-8');
+            } catch (e) { }
+        }
+
+        if (!targetUrl.startsWith('http')) {
+            return res.status(400).send('Invalid URL protocol');
+        }
+
+        console.log(`🖼️ [Image Proxy] Fetching: ${targetUrl}`);
+
+        const response = await axios.get(targetUrl, {
+            responseType: 'arraybuffer',
+            timeout: 15000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Referer': new URL(targetUrl).origin
+            }
+        });
+
+        res.set('Content-Type', response.headers['content-type']);
+        res.set('Cache-Control', 'public, max-age=31536000');
+        res.send(response.data);
+
+    } catch (error) {
+        console.error(`❌ Image proxy failed for ${req.query.url}:`, error.message);
+        res.status(502).send('Error fetching image');
     }
 });
 
