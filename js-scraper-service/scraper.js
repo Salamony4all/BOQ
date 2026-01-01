@@ -588,14 +588,15 @@ class ScraperService {
 
         const storageId = `architonic_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         const crawler = new PlaywrightCrawler({
-            // === MEMORY-OPTIMIZED FOR VERCEL HOBBY (2048 MB) ===
-            maxConcurrency: 3, // Reduced from 10 for memory efficiency
+            // === OPTIMIZED FOR COMPLETE PRODUCT HARVESTING ===
+            maxConcurrency: 1, // Single browser for stable sequential processing
             minConcurrency: 1,
-            maxRequestsPerCrawl: 2000, // Increased to allow full brand catalog discovery
+            maxRequestsPerCrawl: 5000, // Increased for large catalogs with 300+ products
+            maxRequestRetries: 3, // Retry failed product pages
             useSessionPool: false,
             persistCookiesPerSession: false,
-            requestHandlerTimeoutSecs: 180, // Increased timeout for long pages
-            navigationTimeoutSecs: 60, // Increased from 45
+            requestHandlerTimeoutSecs: 120, // Per-request timeout (reduced for faster failure detection)
+            navigationTimeoutSecs: 45,
 
             // Memory-optimized browser settings
             launchContext: {
@@ -1105,10 +1106,12 @@ class ScraperService {
                     console.log(`   ✨ Found ${uniqueLinks.length} items in ${collectionName}`);
 
                     if (uniqueLinks.length > 0) {
+                        console.log(`   📥 Enqueueing ${uniqueLinks.length} products from ${collectionName}...`);
                         await enqueueLinks({
                             urls: uniqueLinks,
                             userData: { label: 'PRODUCT', _brand: brandName, _coll: collectionName }
                         });
+                        console.log(`   ✅ Enqueued ${uniqueLinks.length} products from ${collectionName}`);
                     }
 
                 } else if (label === 'PRODUCT') {
@@ -1222,6 +1225,9 @@ class ScraperService {
                             productUrl: request.url,
                             price: 0
                         });
+                        console.log(`   ✅ [${allProducts.length}] Harvested: ${variantModel} (${_coll})`);
+                    } else {
+                        console.log(`   ⚠️ SKIPPED: ${request.url} (name: ${!!name}, img: ${!!img})`);
                     }
                 }
             },
