@@ -446,6 +446,45 @@ app.delete('/api/brands/:id', async (req, res) => {
 
 
 
+// Image Proxy to bypass hotlink protection (Architonic/Amara)
+app.get('/api/image-proxy', async (req, res) => {
+  try {
+    let { url } = req.query;
+    if (!url) return res.status(400).send('URL is required');
+
+    // Decode if base64 (standard for this app's frontend)
+    if (!url.startsWith('http')) {
+      try {
+        url = Buffer.from(url, 'base64').toString('utf-8');
+      } catch (e) {
+        console.error('Proxy URL decode failed, assuming raw:', e.message);
+      }
+    }
+
+    // Validate protocol
+    if (!url.startsWith('http')) {
+      return res.status(400).send('Invalid URL protocol');
+    }
+
+    const response = await axios.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 10000,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Referer': new URL(url).origin // Trick some CDNs
+      }
+    });
+
+    res.set('Content-Type', response.headers['content-type']);
+    res.set('Cache-Control', 'public, max-age=31536000'); // Cache aggressively
+    res.send(response.data);
+
+  } catch (error) {
+    console.error(`[Proxy] Failed to fetch ${req.query.url}:`, error.message);
+    res.status(502).send('Error fetching image');
+  }
+});
+
 const scraperService = new ScraperService();
 const structureScraper = new StructureScraper();
 const browserlessScraper = new BrowserlessScraper();
@@ -488,7 +527,7 @@ async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 3600000)
 
   while (Date.now() - startTime < maxWaitMs) {
     try {
-      const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/tasks/${taskId}`, { timeout: 15000 });
+      const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/tasks/${taskId}`, { timeout: 60000 });
       const task = response.data;
 
       // Reset error counter on successful fetch
@@ -520,7 +559,7 @@ async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 3600000)
 
       // Network error - increment counter and retry
       consecutiveErrors++;
-      console.warn(`⚠️ Poll error (${consecutiveErrors}/${maxConsecutiveErrors}): ${error.message}`);
+      console.warn(`⚠️ Poll error (${consecutiveErrors}/${maxConsecutiveErrors}): ${error.message} (Status: ${error.response?.status})`);
 
       if (consecutiveErrors >= maxConsecutiveErrors) {
         throw new Error(`Too many consecutive polling errors: ${error.message}`);
