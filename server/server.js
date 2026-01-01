@@ -573,8 +573,21 @@ app.post('/api/scrape-brand', async (req, res) => {
     const origin = req.body.origin || 'UNKNOWN';
     const budgetTier = req.body.budgetTier || 'mid';
 
-    // PRIORITY 1: Use Railway JS Scraper Service if available
-    if (JS_SCRAPER_SERVICE_URL) {
+    // Determine Scraper Source
+    const scraperSource = req.body.scraperSource;
+    const forceLocal = scraperSource === 'local' || (process.env.USE_LOCAL_SCRAPER === 'true' && scraperSource !== 'railway');
+
+    // Cloud Scraper Flags
+    const useScrapingBee = !!process.env.SCRAPINGBEE_API_KEY;
+    const useBrowserless = !!process.env.BROWSERLESS_API_KEY;
+
+    // PRIORITY 1: Local Scraper
+    if (forceLocal) {
+      console.log(`🏠 [scrape-brand] Using LOCAL scraper (Reason: ${scraperSource === 'local' ? 'User Selection' : 'Env Override'})`);
+      // Fall through to local logic below...
+    }
+    // PRIORITY 2: Use Railway JS Scraper Service if available
+    else if (JS_SCRAPER_SERVICE_URL) {
       console.log('🚂 [scrape-brand] Delegating to Railway JS Scraper Service');
       try {
         const jsScraperAvailable = await isJsScraperAvailable();
@@ -664,10 +677,14 @@ app.post('/api/scrape-brand', async (req, res) => {
 
     // Run in background
     (async () => {
+      console.log(`🧵 [Background Task] Starting scraper execution for ${taskId}...`);
       try {
         // Choose scraper: ScrapingBee (anti-bot) > Browserless > Local
         let scraper, scraperName;
-        if (useScrapingBee) {
+        if (forceLocal) {
+          scraper = scraperService;
+          scraperName = 'Local (Forced)';
+        } else if (useScrapingBee) {
           scraper = scrapingBeeScraper;
           scraperName = 'ScrapingBee';
         } else if (useBrowserless) {
@@ -679,7 +696,15 @@ app.post('/api/scrape-brand', async (req, res) => {
         }
 
         console.log(`🔄 Using ${scraperName} scraper for ${url}`);
-        const result = await scraper.scrapeBrand(url);
+        const result = await scraper.scrapeBrand(url, (progress, message) => {
+          // Relay progress to task manager
+          const currentTask = tasks.get(taskId);
+          if (currentTask && currentTask.status !== 'cancelled') {
+            tasks.set(taskId, { ...currentTask, progress, stage: message });
+          }
+        });
+
+        console.log(`✅ [Background Task] Scrape completed: ${result?.products?.length} products`);
         const products = result.products || [];
         const brandLogo = result.brandInfo?.logo || '';
 
@@ -696,11 +721,26 @@ app.post('/api/scrape-brand', async (req, res) => {
           createdAt: new Date()
         };
 
-        await brandStorage.saveBrand(newBrand);
-        tasks.set(taskId, { id: taskId, status: 'completed', progress: 100, stage: 'Complete!', brand: newBrand, productCount: products.length });
-      } catch (error) {
-        console.error('Background scrape failed:', error);
-        tasks.set(taskId, { id: taskId, status: 'failed', error: error.message });
+        // Use centralized storage provider
+        try {
+          await brandStorage.saveBrand(newBrand);
+          console.log(`💾 Brand saved to storage: ${brandName}`);
+        } catch (e) {
+          console.error('Storage save error:', e);
+        }
+
+        tasks.set(taskId, {
+          id: taskId,
+          status: 'completed',
+          progress: 100,
+          stage: 'Complete!',
+          brand: newBrand,
+          productCount: products.length,
+          brandName: brandName
+        });
+      } catch (err) {
+        console.error(`💥 [Background Task] FAILED: ${err.message}\n${err.stack}`);
+        tasks.set(taskId, { id: taskId, status: 'failed', error: err.message, brandName: name });
       }
     })();
 

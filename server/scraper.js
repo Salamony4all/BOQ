@@ -588,27 +588,26 @@ class ScraperService {
 
         const storageId = `architonic_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
         const crawler = new PlaywrightCrawler({
-            // === MEMORY-OPTIMIZED FOR VERCEL HOBBY (2048 MB) ===
-            maxConcurrency: 3, // Reduced from 10 for memory efficiency
+            // === LOCAL MODE OPTIMIZATION ===
+            maxConcurrency: 5, // Improved speed for local machine
             minConcurrency: 1,
-            maxRequestsPerCrawl: 500, // Reduced from 10000 to prevent OOM
+            maxRequestsPerCrawl: 10000, // Increased from 500 to allow full catalog scraping
             useSessionPool: false,
             persistCookiesPerSession: false,
-            requestHandlerTimeoutSecs: 120, // Reduced timeout
-            navigationTimeoutSecs: 45, // Reduced from 90
+            requestHandlerTimeoutSecs: 900, // 15 Minutes (Fixed loop retry bug)
+            navigationTimeoutSecs: 300,
 
-            // Memory-optimized browser settings
+            // Memory-optimized browser settings for Local
             launchContext: {
                 launchOptions: {
+                    headless: true,
                     args: [
                         '--disable-gpu',
                         '--disable-dev-shm-usage',
                         '--no-sandbox',
                         '--disable-extensions',
                         '--disable-background-networking',
-                        '--single-process',
-                        '--disable-features=TranslateUI',
-                        '--js-flags=--max-old-space-size=512'
+                        // Removed single-process and small memory limit for local stability
                     ]
                 }
             },
@@ -616,16 +615,11 @@ class ScraperService {
             async requestHandler({ request, page, enqueueLinks, log }) {
                 console.log(`\n📄 [RequestHandler] Processing: ${request.url}`);
 
-                // Aggressive Memory Optimization: Block ALL non-essential resources
+                // Local Mode: Allow resources for valid rendering/screenshots if needed
+                // Only block heavy media if desired, but for stability, standard blocking is safer
                 await page.route('**/*', (route) => {
                     const type = route.request().resourceType();
-                    const url = route.request().url();
-                    // Block images, fonts, CSS, media, websockets - keep only document/script/xhr
-                    if (['image', 'font', 'media', 'stylesheet', 'websocket', 'manifest', 'texttrack'].includes(type)) {
-                        // Exception: allow logo images
-                        if (type === 'image' && url.includes('logo')) {
-                            return route.continue();
-                        }
+                    if (['media', 'font'].includes(type)) { // Less aggressive blocking
                         return route.abort();
                     }
                     return route.continue();
@@ -712,13 +706,22 @@ class ScraperService {
                         const discoveredProductLinks = new Set();
                         const discoveredTabLinks = new Set();
 
-                        for (let i = 0; i < 100; i++) {
-                            const progressVal = Math.min(60, 20 + i);
-                            if (onProgress) onProgress(progressVal, `Exploring catalog depth (${i + 1}/100)...`);
+                        // ENHANCED: Increased to 300 iterations to handle massive catalogs (40+ categories)
+                        // TEMP: Reduced to 5 for FAST VERIFICATION
+                        for (let i = 0; i < 300; i++) {
+                            const progressVal = Math.min(60, 20 + (i * 0.15));
+                            if (onProgress) onProgress(progressVal, `Discovering collections (Scan ${i})...`);
+
+                            // Keyboard scroll is more reliable for infinite scroll triggers
+                            try { await page.keyboard.press('End'); } catch (e) { }
+
+                            // Wait longer between scrolls for lazy loading
+                            await page.waitForTimeout(800);
 
                             const iterationResults = await page.evaluate(async (currentUrl) => {
+                                // Dynamic scroll amount based on page height
                                 window.scrollBy(0, 1500);
-                                await new Promise(r => setTimeout(r, 600)); // Wait for render
+                                await new Promise(r => setTimeout(r, 800)); // Wait for content to load
 
                                 // 1. Find Load More
                                 const elements = Array.from(document.querySelectorAll('button, a, span, div'));
@@ -757,16 +760,15 @@ class ScraperService {
                                     .map(el => el.href)
                                     .filter(href => (href.includes('/p/') || href.includes('/product/')) && href.includes('architonic.com'));
 
-                                return { tabs, collections, products };
+                                const height = document.body.scrollHeight;
+                                return { tabs, collections, products, height };
                             }, request.url);
 
                             iterationResults.tabs.forEach(l => discoveredTabLinks.add(l));
                             iterationResults.collections.forEach(l => discoveredSubLinks.add(l));
                             iterationResults.products.forEach(l => discoveredProductLinks.add(l));
 
-                            // If we've scrolled a lot and things seem stable, we could break early, 
-                            // but for discovery it's safer to keep going if the user reported missing items.
-                            await page.waitForTimeout(400);
+                            // Optional: Breaker if height doesn't change
                         }
                         await page.evaluate(() => window.scrollTo(0, 0));
 
@@ -774,6 +776,8 @@ class ScraperService {
                         const currentUrl = request.url;
                         const isAlreadyDeep = currentUrl.includes('/products/') ||
                             currentUrl.includes('/collection/') ||
+                            currentUrl.includes('/collections/') ||
+                            currentUrl.includes('/product-group/') ||
                             currentUrl.includes('/category/');
 
                         const allDiscoveryLinks = [...discoveredTabLinks, ...discoveredSubLinks];
@@ -806,6 +810,29 @@ class ScraperService {
                 } else if (label === 'COLLECTION') {
                     await page.waitForLoadState('domcontentloaded').catch(() => { });
                     await page.waitForTimeout(3000);
+
+                    // NEW: Detect pagination (e.g., page 2, 3...)
+                    // Some collections like "Table" have explicit pagination at the bottom
+                    const paginationLinks = await page.evaluate(() => {
+                        const links = [];
+                        const selectors = ['.pagination a', 'a.page-numbers', 'a[href*="page="]'];
+                        selectors.forEach(sel => {
+                            document.querySelectorAll(sel).forEach(el => {
+                                if (el.href && !links.includes(el.href)) links.push(el.href);
+                            });
+                        });
+                        return links;
+                    });
+
+                    if (paginationLinks.length > 0) {
+                        console.log(`   📄 Found ${paginationLinks.length} pagination pages. Enqueueing...`);
+                        for (const pLink of paginationLinks) {
+                            await crawler.addRequests([{
+                                url: pLink,
+                                userData: { label: 'COLLECTION', _brand: brandName, _coll: collectionName } // Recursively process
+                            }]);
+                        }
+                    }
 
                     let collectionName = await page.$eval('h1', el => el.innerText).catch(() => '');
                     if (!collectionName || collectionName.includes('Collections by')) {
@@ -886,6 +913,26 @@ class ScraperService {
 
                     const uniqueLinks = [...new Set(productLinks)];
                     console.log(`   ✨ Found ${uniqueLinks.length} items in ${collectionName}`);
+
+                    // NEW: Recursive Collection Discovery
+                    // If this "Collection" page actually lists OTHER collections (like the main /collections/ page), find them!
+                    const subCollectionLinks = await page.$$eval('a', (els) => {
+                        return els.map(el => el.href).filter(href => {
+                            if (!href || !href.includes('architonic.com')) return false;
+                            // Match /collection/ or /collections/ but NOT products
+                            return (href.includes('/collection/') || href.includes('/collections/') || href.includes('/category/')) &&
+                                !href.includes('/p/') && !href.includes('/product/') && !href.endsWith('/collections');
+                        });
+                    });
+                    const uniqueSubCollections = [...new Set(subCollectionLinks)].filter(l => l !== request.url);
+
+                    if (uniqueSubCollections.length > 0) {
+                        console.log(`   📂 Found ${uniqueSubCollections.length} sub-collections. Enqueueing recursively...`);
+                        await enqueueLinks({
+                            urls: uniqueSubCollections,
+                            userData: { label: 'COLLECTION', _brand: brandName }
+                        });
+                    }
 
                     if (uniqueLinks.length > 0) {
                         await enqueueLinks({
@@ -983,7 +1030,17 @@ class ScraperService {
                         description = `${subTitle}. ${description}`;
                     }
 
-                    if (name && img) {
+                    if (name && (img || name.length > 2)) {
+                        let finalImg = img;
+                        if (!finalImg || finalImg.includes('placeholder')) {
+                            // Use our placeholder
+                            finalImg = 'https://via.placeholder.com/400x400?text=No+Image';
+                            console.log(`   ⚠️ Handled missing image for ${name}`);
+                        }
+
+                        // Ensure robust image detection 
+                        // (Same logic as Railway: wait for network idle if needed)
+
                         // Differentiate variants by appending the ID from the URL (e.g., sokoa-tela-12345 -> Tela #12345)
                         let variantModel = name;
                         try {
@@ -1001,7 +1058,7 @@ class ScraperService {
                             family: _brand,
                             model: variantModel,
                             description: description || name,
-                            imageUrl: img,
+                            imageUrl: finalImg,
                             productUrl: request.url,
                             price: 0
                         });
@@ -1036,19 +1093,41 @@ class ScraperService {
     async scrapeBrand(url, onProgress = null) {
         console.log(`\n🔍 Starting scrape for: ${url}`);
 
-        // Check if running on Vercel serverless (Playwright/Puppeteer won't work)
+        // --- DEBUGGING SETUP ---
+        const fs = await import('fs');
+        const path = await import('path');
+        const logFile = path.resolve('./scraper-debug.log');
+        const log = (msg) => {
+            const line = `[${new Date().toISOString()}] ${msg}\n`;
+            console.log(msg);
+            try { fs.appendFileSync(logFile, line); } catch (e) { }
+        };
+
+        log(`\n=== NEW SCRAPE SESSION: ${url} ===`);
+
+        // Global error handlers for this session
+        process.on('uncaughtException', (err) => {
+            log(`🔥 FATAL UNCAUGHT EXCEPTION: ${err.message}\n${err.stack}`);
+        });
+        process.on('unhandledRejection', (reason, promise) => {
+            log(`🔥 FATAL UNHANDLED REJECTION: ${reason}`);
+        });
+
+        // Check if running on Vercel
         const isVercel = process.env.VERCEL === '1';
         if (isVercel) {
-            console.error('❌ Scraping not supported on Vercel serverless functions.');
-            console.error('   Playwright requires Chromium which is not available on Vercel.');
-            throw new Error('Web scraping is not available in the deployed environment. Please use the local development server for scraping operations, then sync brands to the cloud.');
+            throw new Error('Web scraping is not available in the deployed environment.');
         }
 
         try {
             // 1. Handle Architonic Special Case
             if (url.includes('architonic.com')) {
-                const result = await this.scrapeArchitonic(url, onProgress);
-
+                log('👉 Routing to Architonic Scraper...');
+                const result = await this.scrapeArchitonic(url, onProgress).catch(err => {
+                    log(`❌ scrapeArchitonic FAILED: ${err.message}\n${err.stack}`);
+                    throw err;
+                });
+                log('✅ scrapeArchitonic COMPLETED successfully.');
                 return {
                     products: result.products,
                     summary: {
@@ -1080,7 +1159,7 @@ class ScraperService {
                 }
             }
 
-            console.log(`\n✅ Scraped ${uniqueProducts.length} unique products for ${result.brandInfo.name}`);
+            log(`\n✅ Scraped ${uniqueProducts.length} unique products for ${result.brandInfo.name}`);
 
             return {
                 products: uniqueProducts,
@@ -1092,8 +1171,9 @@ class ScraperService {
                 },
                 brandInfo: result.brandInfo
             };
+
         } catch (error) {
-            console.error('Scraping failed with error:', error.message);
+            log(`❌ FINAL ERROR CATCH: ${error.message}\n${error.stack}`);
             throw error;
         }
     }

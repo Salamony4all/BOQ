@@ -13,7 +13,8 @@ const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:30
 
 const getFullUrl = (url) => {
     if (!url) return '';
-    if (url.includes('amara-art.com')) {
+    // Proxy Architonic and Amara Art images to bypass hotlink protection/CORS
+    if (url.includes('amara-art.com') || url.includes('architonic.com')) {
         // Base64 encode the URL to bypass client-side antivirus/firewall URL inspection
         return `${API_BASE}/api/image-proxy?url=${btoa(url)}`;
     }
@@ -1792,19 +1793,19 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                         {/* Brand Logo Badge */}
                                         {row.brandLogo && (
                                             <div className={styles.brandLogoBadge}>
-                                                <img src={row.brandLogo} alt="" className={styles.badgeLogo} />
+                                                <img src={getFullUrl(row.brandLogo)} alt="" className={styles.badgeLogo} />
                                             </div>
                                         )}
 
                                         {/* Product Image */}
                                         {row.brandImage ? (
                                             <img
-                                                src={row.brandImage}
+                                                src={getFullUrl(row.brandImage)}
                                                 alt="brand"
                                                 className={styles.tableImg}
                                                 onClick={() => {
-                                                    setPreviewImage(row.brandImage);
-                                                    setPreviewLogo(row.brandLogo);
+                                                    setPreviewImage(getFullUrl(row.brandImage));
+                                                    setPreviewLogo(getFullUrl(row.brandLogo));
                                                 }}
                                             />
                                         ) : (
@@ -1846,7 +1847,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                                 {row.selectedBrand ? (
                                                     <>
                                                         {row.brandLogo ? (
-                                                            <img src={row.brandLogo} alt="" className={styles.triggerLogo} />
+                                                            <img src={getFullUrl(row.brandLogo)} alt="" className={styles.triggerLogo} />
                                                         ) : (
                                                             <span className={styles.triggerInitial}>{row.selectedBrand.charAt(0)}</span>
                                                         )}
@@ -1871,7 +1872,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                                             }}
                                                         >
                                                             {b.logo ? (
-                                                                <img src={b.logo} alt="" className={styles.optionLogo} />
+                                                                <img src={getFullUrl(b.logo)} alt="" className={styles.optionLogo} />
                                                             ) : (
                                                                 <span className={styles.optionInitial}>{b.name.charAt(0)}</span>
                                                             )}
@@ -2043,7 +2044,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                         {/* Brand Logo Badge in Modal */}
                         {previewLogo && (
                             <div className={styles.previewLogoBadge}>
-                                <img src={previewLogo} alt="brand logo" className={styles.previewBadgeLogo} />
+                                <img src={getFullUrl(previewLogo)} alt="brand logo" className={styles.previewBadgeLogo} />
                             </div>
                         )}
 

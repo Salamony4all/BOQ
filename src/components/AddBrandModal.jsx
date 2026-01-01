@@ -10,6 +10,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
     const [origin, setOrigin] = useState('');
     const [budgetTier, setBudgetTier] = useState('mid');
     const [scrapingMethod, setScrapingMethod] = useState('ai');
+    const [scraperSource, setScraperSource] = useState('railway'); // 'railway' or 'local'
     const [loading, setLoading] = useState(false);
 
     // DB Management State
@@ -69,7 +70,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
             const res = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ name, url: website, origin, budgetTier })
+                body: JSON.stringify({ name, url: website, origin, budgetTier, scraperSource })
             });
 
             if (!res.ok) throw new Error('Failed to start scraping');
@@ -245,73 +246,90 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
                         </select>
                     </div>
 
-                    <div className={styles.actionRow}>
-                        <button className={styles.cancelBtn} onClick={onClose}>Cancel</button>
-                        <button className={styles.getProductsBtn} onClick={handleScraping} disabled={loading || !name || !website}>
-                            {loading ? 'Processing...' : '🔍 Start Harvesting'}
-                        </button>
-                    </div>
+                    {/* NEW: Scraper Source Selection (Only for Specialized Scraper) */}
+                    {scrapingMethod === 'requests' && (
+                        <div className={styles.formGroup}>
+                            <label className={styles.label}>Execution Engine</label>
+                            <select
+                                className={styles.select}
+                                value={scraperSource}
+                                onChange={e => setScraperSource(e.target.value)}
+                                style={{ border: '1px solid #3b82f6', background: '#eff6ff' }}
+                            >
+                                <option value="railway">🚂 Railway Service (Recommended - Stable)</option>
+                                <option value="local">🏠 Local Server (Testing/Debug)</option>
+                            </select>
+                        </div>
+                    )}
+                </div>
 
-                    <div className={styles.sectionDivider} />
+                <div className={styles.actionRow}>
+                    <button className={styles.cancelBtn} onClick={onClose}>Cancel</button>
+                    <button className={styles.getProductsBtn} onClick={handleScraping} disabled={loading || !name || !website}>
+                        {loading ? 'Processing...' : '🔍 Start Harvesting'}
+                    </button>
+                </div>
 
-                    {/* DB Management */}
-                    <div className={styles.sectionTitle}>📥 Excel Database Operations</div>
-                    <div className={styles.description}>
-                        Bulk update brand products using the Excel interface.
-                    </div>
+                <div className={styles.sectionDivider} />
 
-                    <div className={styles.brandListContainer}>
-                        {allBrands.length === 0 ? (
-                            <div className={styles.emptyList}>No brands found. Add one above to manage its database.</div>
-                        ) : (
-                            <div className={styles.brandList}>
-                                {allBrands.map(brand => (
-                                    <div key={brand.id} className={styles.brandItem}>
-                                        <div className={styles.brandInfo}>
-                                            <div className={styles.brandNameText}>{brand.name}</div>
-                                            <div className={styles.brandStats}>
-                                                {brand.products?.length || 0} Products • {brand.budgetTier}
-                                            </div>
-                                        </div>
-                                        <div className={styles.brandActions}>
-                                            <button
-                                                className={`${styles.actionBtn} ${styles.miniDownloadBtn}`}
-                                                onClick={() => handleDownloadDB(brand.id)}
-                                                title="Download Excel"
-                                            >
-                                                📥 Export
-                                            </button>
-                                            <button
-                                                className={`${styles.actionBtn} ${styles.miniUploadBtn}`}
-                                                onClick={() => handleUploadClick(brand.id)}
-                                                title="Upload Excel"
-                                            >
-                                                📤 {(importingId === brand.id) ? '...' : 'Import'}
-                                            </button>
-                                            <button
-                                                className={`${styles.actionBtn} ${styles.miniDeleteBtn}`}
-                                                onClick={() => handleDeleteBrand(brand)}
-                                                title="Delete Brand"
-                                                disabled={deletingId === brand.id}
-                                            >
-                                                🗑️ {(deletingId === brand.id) ? '...' : 'Delete'}
-                                            </button>
+                {/* DB Management */}
+                <div className={styles.sectionTitle}>📥 Excel Database Operations</div>
+                <div className={styles.description}>
+                    Bulk update brand products using the Excel interface.
+                </div>
+
+                <div className={styles.brandListContainer}>
+                    {allBrands.length === 0 ? (
+                        <div className={styles.emptyList}>No brands found. Add one above to manage its database.</div>
+                    ) : (
+                        <div className={styles.brandList}>
+                            {allBrands.map(brand => (
+                                <div key={brand.id} className={styles.brandItem}>
+                                    <div className={styles.brandInfo}>
+                                        <div className={styles.brandNameText}>{brand.name}</div>
+                                        <div className={styles.brandStats}>
+                                            {brand.products?.length || 0} Products • {brand.budgetTier}
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <input
-                        type="file"
-                        ref={fileInputRef}
-                        style={{ display: 'none' }}
-                        accept=".xlsx, .xls"
-                        onChange={handleFileChange}
-                    />
+                                    <div className={styles.brandActions}>
+                                        <button
+                                            className={`${styles.actionBtn} ${styles.miniDownloadBtn}`}
+                                            onClick={() => handleDownloadDB(brand.id)}
+                                            title="Download Excel"
+                                        >
+                                            📥 Export
+                                        </button>
+                                        <button
+                                            className={`${styles.actionBtn} ${styles.miniUploadBtn}`}
+                                            onClick={() => handleUploadClick(brand.id)}
+                                            title="Upload Excel"
+                                        >
+                                            📤 {(importingId === brand.id) ? '...' : 'Import'}
+                                        </button>
+                                        <button
+                                            className={`${styles.actionBtn} ${styles.miniDeleteBtn}`}
+                                            onClick={() => handleDeleteBrand(brand)}
+                                            title="Delete Brand"
+                                            disabled={deletingId === brand.id}
+                                        >
+                                            🗑️ {(deletingId === brand.id) ? '...' : 'Delete'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
+
+                <input
+                    type="file"
+                    ref={fileInputRef}
+                    style={{ display: 'none' }}
+                    accept=".xlsx, .xls"
+                    onChange={handleFileChange}
+                />
             </div>
         </div>
+
     );
 }

@@ -23,7 +23,8 @@
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow: hidden;
+  /* Changed from overflow-y: auto to handle inner scroll */
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -46,8 +47,7 @@
   justify-content: space-between;
   align-items: center;
   background: var(--bg-primary);
-  position: sticky;
-  top: 0;
+  /* Removed sticky positioning as we now have fixed header via flex column */
   z-index: 10;
 }
 
@@ -85,6 +85,10 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  /* Crucial for scrolling in flex containers */
 }
 
 .description {

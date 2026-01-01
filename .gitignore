@@ -26,3 +26,11 @@ uploads
 
 .vercel
 .env*.local
+
+# Crawler storage
+storage/
+server/storage/
+server/data/temp/
+
+# Scraper Logs
+scraper-debug.log
