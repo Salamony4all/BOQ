@@ -1272,7 +1272,9 @@ class ScraperService {
                         description = `${subTitle}. ${description}`;
                     }
 
-                    if (name && img) {
+                    // ENHANCED: Include products even without images (use placeholder)
+                    // Only require name to be present
+                    if (name) {
                         // Differentiate variants by appending the ID from the URL (e.g., sokoa-tela-12345 -> Tela #12345)
                         let variantModel = name;
                         try {
@@ -1284,19 +1286,23 @@ class ScraperService {
                             }
                         } catch (e) { }
 
+                        // Use placeholder image if no image found
+                        const PLACEHOLDER_IMAGE = 'https://via.placeholder.com/400x400?text=No+Image';
+                        const productImage = img || PLACEHOLDER_IMAGE;
+
                         allProducts.push({
                             mainCategory: 'Furniture',
                             subCategory: _coll || 'General',
                             family: _brand,
                             model: variantModel,
                             description: description || name,
-                            imageUrl: img,
+                            imageUrl: productImage,
                             productUrl: request.url,
                             price: 0
                         });
-                        console.log(`   ✅ [${allProducts.length}] Harvested: ${variantModel} (${_coll})`);
+                        console.log(`   ✅ [${allProducts.length}] Harvested: ${variantModel} (${_coll})${!img ? ' [NO IMG]' : ''}`);
                     } else {
-                        console.log(`   ⚠️ SKIPPED: ${request.url} (name: ${!!name}, img: ${!!img})`);
+                        console.log(`   ⚠️ SKIPPED: ${request.url} (no product name found)`);
                     }
                 }
             },
