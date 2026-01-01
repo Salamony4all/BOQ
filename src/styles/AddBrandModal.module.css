@@ -23,8 +23,9 @@
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  /* Changed from overflow-y: auto to handle inner scroll */
+  overflow-y: auto;
+  scrollbar-width: thin;
+  /* Enable scroll for entire modal */
   animation: fadeIn 0.2s ease-out;
 }
 
@@ -85,10 +86,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  /* Crucial for scrolling in flex containers */
+  /* Removed overflow-y as modal now handles main scroll */
 }
 
 .description {
@@ -220,6 +218,7 @@
   border-radius: 10px;
   max-height: 250px;
   overflow-y: auto;
+  scrollbar-width: thin;
   margin-top: 0.5rem;
 }
 

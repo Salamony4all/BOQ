@@ -270,7 +270,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
                     </button>
                 </div>
 
-                <div className={styles.sectionDivider} />
+
 
                 {/* DB Management */}
                 <div className={styles.sectionTitle}>📥 Excel Database Operations</div>
