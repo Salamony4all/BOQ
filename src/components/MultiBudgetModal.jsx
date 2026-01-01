@@ -16,7 +16,7 @@ const getFullUrl = (url) => {
     // Proxy Architonic and Amara Art images to bypass hotlink protection/CORS
     if (url.includes('amara-art.com') || url.includes('architonic.com')) {
         // Base64 encode the URL to bypass client-side antivirus/firewall URL inspection
-        return `${API_BASE}/api/image-proxy?url=${btoa(url)}`;
+        return `${API_BASE}/api/image-proxy?url=${encodeURIComponent(btoa(url))}`;
     }
     if (url.startsWith('http') || url.startsWith('data:')) return url;
     return `${API_BASE}${url}`;
