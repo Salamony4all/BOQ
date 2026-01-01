@@ -11,6 +11,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import axios from 'axios';
 import ScraperService from './scraper.js';
 import StructureScraper from './structureScraper.js';
 
@@ -332,6 +333,48 @@ app.post('/scrape-architonic', async (req, res) => {
 });
 
 
+
+// ===================== IMAGE PROXY =====================
+// This endpoint allows Vercel to delegate image fetching to Railway
+// because Architonic blocks Vercel's AWS IP addresses
+app.get('/image-proxy', async (req, res) => {
+    try {
+        const { url } = req.query;
+        if (!url) return res.status(400).send('URL is required');
+
+        // URL decoding happens automatically by Express, but handle base64 if needed
+        let targetUrl = url;
+        if (!targetUrl.startsWith('http')) {
+            try {
+                targetUrl = Buffer.from(targetUrl, 'base64').toString('utf-8');
+            } catch (e) { }
+        }
+
+        if (!targetUrl.startsWith('http')) {
+            return res.status(400).send('Invalid URL protocol');
+        }
+
+        console.log(`🖼️ [Image Proxy] Fetching: ${targetUrl}`);
+
+        const response = await axios.get(targetUrl, {
+            responseType: 'arraybuffer',
+            timeout: 15000,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.architonic.com/'
+            }
+        });
+
+        res.set('Content-Type', response.headers['content-type']);
+        res.set('Cache-Control', 'public, max-age=31536000');
+        res.set('Access-Control-Allow-Origin', '*');
+        res.send(response.data);
+
+    } catch (error) {
+        console.error(`❌ Image proxy failed for ${req.query.url}:`, error.message);
+        res.status(502).send('Error fetching image');
+    }
+});
 
 
 // ===================== START SERVER =====================

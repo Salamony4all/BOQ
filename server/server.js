@@ -466,8 +466,24 @@ app.get('/api/image-proxy', async (req, res) => {
       return res.status(400).send('Invalid URL protocol');
     }
 
+    // Delegate Architonic images to Railway (bypasses Vercel IP blocking)
+    if (url.includes('architonic.com') && JS_SCRAPER_SERVICE_URL) {
+      try {
+        const railwayProxyUrl = `${JS_SCRAPER_SERVICE_URL}/image-proxy?url=${encodeURIComponent(url)}`;
+        const response = await axios.get(railwayProxyUrl, {
+          responseType: 'arraybuffer',
+          timeout: 20000
+        });
+        res.set('Content-Type', response.headers['content-type']);
+        res.set('Cache-Control', 'public, max-age=31536000');
+        res.send(response.data);
+        return;
+      } catch (railwayError) {
+        console.warn(`[Proxy] Railway delegation failed: ${railwayError.message}. Falling back to local.`);
+      }
+    }
 
-
+    // Fallback: Direct fetch (works for non-Architonic images)
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
       timeout: 15000,
