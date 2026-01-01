@@ -466,31 +466,7 @@ app.get('/api/image-proxy', async (req, res) => {
       return res.status(400).send('Invalid URL protocol');
     }
 
-    // Delegate to Railway Service to avoid Vercel IP blocking
-    if (JS_SCRAPER_SERVICE_URL) {
-      try {
-        // Forward request to Railway
-        // We can redirect (302) if Railway is public, but double-proxy is safer for CORS/Auth if needed.
-        // Let's try fetching from Railway and piping.
 
-        // Encode URL to ensure safe transport
-        const railwayProxyUrl = `${JS_SCRAPER_SERVICE_URL}/image-proxy?url=${encodeURIComponent(url)}`;
-
-        const response = await axios.get(railwayProxyUrl, {
-          responseType: 'arraybuffer',
-          timeout: 20000
-        });
-
-        res.set('Content-Type', response.headers['content-type']);
-        res.set('Cache-Control', 'public, max-age=31536000');
-        res.send(response.data);
-        return;
-
-      } catch (railwayError) {
-        console.warn(`[Proxy] Railway delegation failed: ${railwayError.message}. Falling back to local.`);
-        // Fallback to local fetch (original logic) below...
-      }
-    }
 
     const response = await axios.get(url, {
       responseType: 'arraybuffer',
