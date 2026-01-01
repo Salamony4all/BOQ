@@ -476,20 +476,35 @@ async function callJsScraperService(endpoint, payload, timeout = 300000) {
 }
 
 // Helper to poll task status from Railway service
-async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 600000) {
+// ENHANCED: Increased timeout to 30 minutes and added resilience for long scrapes
+async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 1800000) {
   const startTime = Date.now();
-  const pollInterval = 2000; // 2 seconds
+  const pollInterval = 3000; // 3 seconds (slightly longer to reduce load)
+  let consecutiveErrors = 0;
+  const maxConsecutiveErrors = 10; // Allow up to 10 network errors before giving up
+  let lastProgress = 0;
+
+  console.log(`🔄 Starting poll for Railway task: ${taskId} (max wait: ${maxWaitMs / 60000} minutes)`);
 
   while (Date.now() - startTime < maxWaitMs) {
     try {
-      const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/tasks/${taskId}`, { timeout: 10000 });
+      const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/tasks/${taskId}`, { timeout: 15000 });
       const task = response.data;
+
+      // Reset error counter on successful fetch
+      consecutiveErrors = 0;
 
       if (onProgress && task.progress && task.stage) {
         onProgress(task.progress, task.stage, task.brandName);
+        // Log progress milestones
+        if (Math.floor(task.progress / 25) > Math.floor(lastProgress / 25)) {
+          console.log(`   📊 Task ${taskId}: ${task.progress}% - ${task.stage}`);
+        }
+        lastProgress = task.progress;
       }
 
       if (task.status === 'completed') {
+        console.log(`✅ Task ${taskId} completed with ${task.productCount || 0} products`);
         return task;
       } else if (task.status === 'failed') {
         throw new Error(task.error || 'JS Scraper task failed');
@@ -502,11 +517,23 @@ async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 600000) 
       if (error.response?.status === 404) {
         throw new Error('Task not found on JS Scraper service');
       }
-      // Network error - wait and retry
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
+
+      // Network error - increment counter and retry
+      consecutiveErrors++;
+      console.warn(`⚠️ Poll error (${consecutiveErrors}/${maxConsecutiveErrors}): ${error.message}`);
+
+      if (consecutiveErrors >= maxConsecutiveErrors) {
+        throw new Error(`Too many consecutive polling errors: ${error.message}`);
+      }
+
+      // Exponential backoff for network errors (up to 10 seconds)
+      const backoffMs = Math.min(pollInterval * consecutiveErrors, 10000);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
   }
-  throw new Error('JS Scraper task timed out');
+
+  console.error(`❌ Task ${taskId} timed out after ${maxWaitMs / 60000} minutes`);
+  throw new Error('JS Scraper task timed out - try increasing maxWaitMs or check Railway logs');
 }
 
 // --- Task Manager for Background Scraping ---
