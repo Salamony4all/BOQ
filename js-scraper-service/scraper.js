@@ -593,17 +593,25 @@ class ScraperService {
         const config = Configuration.getGlobalConfig();
         config.set('persistStorage', false);
 
+        // Track 403 errors for adaptive delay
+        let consecutive403Count = 0;
+        let baseDelay = 2000; // Start with 2 second delay between requests
+
         const crawler = new PlaywrightCrawler({
-            // === LOCAL MODE OPTIMIZATION ===
-            maxConcurrency: 1, // Reduced to 1 for MAXIMUM STABILITY
+            // === ANTI-RATE-LIMIT CONFIGURATION ===
+            maxConcurrency: 1, // Single concurrent request to avoid triggering anti-bot
             minConcurrency: 1,
             maxRequestsPerCrawl: 10000,
-            useSessionPool: false,
-            persistCookiesPerSession: false,
+            useSessionPool: true, // Enable session pool for cookie persistence
+            persistCookiesPerSession: true, // Persist cookies like a real browser
             requestHandlerTimeoutSecs: 900,
             navigationTimeoutSecs: 300,
+            
+            // Add delay between requests to avoid rate limiting
+            sameDomainDelaySecs: 3, // 3 second delay between requests to same domain
+            maxRequestRetries: 3, // Retry failed requests
 
-            // Memory-optimized browser settings for Local
+            // Stealth browser settings
             launchContext: {
                 launchOptions: {
                     headless: true,
@@ -614,7 +622,9 @@ class ScraperService {
                         '--disable-setuid-sandbox',
                         '--disable-extensions',
                         '--disable-background-networking',
-                        // Removed single-process and small memory limit for local stability
+                        '--disable-blink-features=AutomationControlled', // Hide automation
+                        '--disable-web-security',
+                        '--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     ]
                 }
             },
@@ -963,10 +973,42 @@ class ScraperService {
 
                 } else if (label === 'PRODUCT') {
                     const { _brand, _coll } = request.userData;
+                    
+                    // Add adaptive delay based on consecutive 403 errors
+                    const adaptiveDelay = baseDelay + (consecutive403Count * 1000);
+                    if (consecutive403Count > 0) {
+                        console.log(`   ⏳ Rate limit protection: waiting ${adaptiveDelay}ms (${consecutive403Count} consecutive 403s)`);
+                        await page.waitForTimeout(adaptiveDelay);
+                    }
+                    
                     await page.waitForLoadState('domcontentloaded');
                     await page.waitForSelector('h1', { timeout: 10000 }).catch(() => { });
 
                     const name = await page.$eval('h1', el => el.innerText.trim()).catch(() => '');
+                    
+                    // === 403 ERROR DETECTION ===
+                    // Check if we hit a 403 error page (Architonic returns "403 ERROR" in H1)
+                    const isBlockedPage = name.toLowerCase().includes('403') || 
+                                          name.toLowerCase().includes('error') ||
+                                          name.toLowerCase().includes('forbidden') ||
+                                          name.toLowerCase().includes('access denied') ||
+                                          name.toLowerCase().includes('blocked');
+                    
+                    if (isBlockedPage) {
+                        consecutive403Count++;
+                        console.log(`   🚫 [403 BLOCKED] Skipping blocked page: ${request.url} (consecutive: ${consecutive403Count})`);
+                        
+                        // If too many consecutive 403s, pause longer
+                        if (consecutive403Count >= 5) {
+                            console.log(`   ⏸️ Too many 403s! Pausing for 30 seconds...`);
+                            await page.waitForTimeout(30000);
+                            consecutive403Count = 0; // Reset after long pause
+                        }
+                        return; // Skip this product entirely
+                    }
+                    
+                    // Reset consecutive counter on successful page
+                    consecutive403Count = 0;
 
                     // Improved image detection: Prioritize variant-specific images (opacity-100)
                     const img = await page.evaluate(() => {
@@ -1050,7 +1092,14 @@ class ScraperService {
                         description = `${subTitle}. ${description}`;
                     }
 
-                    if (name && (img || name.length > 2)) {
+                    // Double-check name is valid (not an error page that slipped through)
+                    const isValidName = name && 
+                                        name.length > 2 && 
+                                        !name.toLowerCase().includes('403') &&
+                                        !name.toLowerCase().includes('error') &&
+                                        !name.toLowerCase().includes('forbidden');
+                    
+                    if (isValidName && (img || name.length > 2)) {
                         let finalImg = img;
                         if (!finalImg || finalImg.includes('placeholder')) {
                             // Use our placeholder
