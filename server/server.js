@@ -502,32 +502,34 @@ async function callJsScraperService(endpoint, payload, timeout = 300000) {
 // ENHANCED: Increased timeout to 60 minutes for very large brand collections (300+ products)
 async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 3600000) {
   const startTime = Date.now();
-  const pollInterval = 3000; // 3 seconds (slightly longer to reduce load)
+  const pollInterval = 3000; // 3 seconds
   let consecutiveErrors = 0;
-  const maxConsecutiveErrors = 10; // Allow up to 10 network errors before giving up
+  const maxConsecutiveErrors = 20; // Allow more retries
   let lastProgress = 0;
 
-  console.log(`🔄 Starting poll for Railway task: ${taskId} (max wait: ${maxWaitMs / 60000} minutes)`);
+  console.log(`🔄 Starting poll for Railway task: ${taskId} (timeout: ${maxWaitMs / 60000} mins)`);
 
   while (Date.now() - startTime < maxWaitMs) {
     try {
-      const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/tasks/${taskId}`, { timeout: 60000 });
+      // Short timeout for the poll request itself to prevent hanging
+      const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/tasks/${taskId}`, { timeout: 10000 });
       const task = response.data;
 
-      // Reset error counter on successful fetch
+      // Reset error counter
       consecutiveErrors = 0;
 
-      if (onProgress && task.progress && task.stage) {
-        onProgress(task.progress, task.stage, task.brandName);
-        // Log progress milestones
-        if (Math.floor(task.progress / 25) > Math.floor(lastProgress / 25)) {
-          console.log(`   📊 Task ${taskId}: ${task.progress}% - ${task.stage}`);
+      if (onProgress && task.progress) {
+        onProgress(task.progress, task.stage || 'Processing...', task.brandName);
+
+        // Log progress occasionally
+        if (Math.abs(task.progress - lastProgress) >= 5 || task.status === 'completed') {
+          console.log(`   📊 Task ${taskId}: ${task.progress}% - ${task.stage} (Status: ${task.status})`);
+          lastProgress = task.progress;
         }
-        lastProgress = task.progress;
       }
 
       if (task.status === 'completed') {
-        console.log(`✅ Task ${taskId} completed with ${task.productCount || 0} products`);
+        console.log(`✅ Task ${taskId} COMPLETED with ${task.productCount || 0} products`);
         return task;
       } else if (task.status === 'failed') {
         throw new Error(task.error || 'JS Scraper task failed');
@@ -538,25 +540,26 @@ async function pollJsScraperTask(taskId, onProgress = null, maxWaitMs = 3600000)
       await new Promise(resolve => setTimeout(resolve, pollInterval));
     } catch (error) {
       if (error.response?.status === 404) {
+        // If task disappeared from Railway but we thought it was running, it might have finished or crashed
+        console.warn(`⚠️ Task ${taskId} not found (404). It may have been cleared or service restarted.`);
         throw new Error('Task not found on JS Scraper service');
       }
 
       // Network error - increment counter and retry
       consecutiveErrors++;
-      console.warn(`⚠️ Poll error (${consecutiveErrors}/${maxConsecutiveErrors}): ${error.message} (Status: ${error.response?.status})`);
+      console.warn(`⚠️ Poll error (${consecutiveErrors}/${maxConsecutiveErrors}): ${error.message}`);
 
       if (consecutiveErrors >= maxConsecutiveErrors) {
         throw new Error(`Too many consecutive polling errors: ${error.message}`);
       }
 
-      // Exponential backoff for network errors (up to 10 seconds)
       const backoffMs = Math.min(pollInterval * consecutiveErrors, 10000);
       await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
   }
 
-  console.error(`❌ Task ${taskId} timed out after ${maxWaitMs / 60000} minutes`);
-  throw new Error('JS Scraper task timed out - try increasing maxWaitMs or check Railway logs');
+  console.error(`❌ Task ${taskId} timed out locally after ${maxWaitMs / 60000} minutes`);
+  throw new Error('JS Scraper task timed out in polling loop');
 }
 
 // --- Task Manager for Background Scraping ---
