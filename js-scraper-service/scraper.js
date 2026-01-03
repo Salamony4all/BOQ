@@ -595,21 +595,21 @@ class ScraperService {
 
         // Track 403 errors for adaptive delay
         let consecutive403Count = 0;
-        let baseDelay = 2000; // Start with 2 second delay between requests
+        let baseDelay = 500; // Reduced from 2000ms for faster scraping
 
         const crawler = new PlaywrightCrawler({
-            // === ANTI-RATE-LIMIT CONFIGURATION ===
-            maxConcurrency: 1, // Single concurrent request to avoid triggering anti-bot
-            minConcurrency: 1,
+            // === SPEED-OPTIMIZED CONFIGURATION ===
+            maxConcurrency: 5, // Increased from 1 for parallel processing
+            minConcurrency: 3,
             maxRequestsPerCrawl: 10000,
             useSessionPool: true, // Enable session pool for cookie persistence
             persistCookiesPerSession: true, // Persist cookies like a real browser
-            requestHandlerTimeoutSecs: 900,
-            navigationTimeoutSecs: 300,
-            
-            // Add delay between requests to avoid rate limiting
-            sameDomainDelaySecs: 3, // 3 second delay between requests to same domain
-            maxRequestRetries: 3, // Retry failed requests
+            requestHandlerTimeoutSecs: 120, // Reduced from 900 for faster timeout
+            navigationTimeoutSecs: 60, // Reduced from 300 for faster timeout
+
+            // Reduced delay for faster scraping (still has protection via 403 detection)
+            sameDomainDelaySecs: 1, // Reduced from 3 seconds
+            maxRequestRetries: 2, // Reduced from 3 for faster completion
 
             // Stealth browser settings
             launchContext: {
@@ -632,11 +632,11 @@ class ScraperService {
             async requestHandler({ request, page, enqueueLinks, log }) {
                 console.log(`\n📄 [RequestHandler] Processing: ${request.url}`);
 
-                // Local Mode: Allow resources for valid rendering/screenshots if needed
-                // Only block heavy media if desired, but for stability, standard blocking is safer
+                // Speed optimization: Block unnecessary resources
                 await page.route('**/*', (route) => {
                     const type = route.request().resourceType();
-                    if (['media', 'font'].includes(type)) { // Less aggressive blocking
+                    // Block images, fonts, media, stylesheets for speed (we extract image URLs from HTML)
+                    if (['image', 'media', 'font', 'stylesheet', 'websocket', 'manifest'].includes(type)) {
                         return route.abort();
                     }
                     return route.continue();
@@ -655,8 +655,38 @@ class ScraperService {
                 if (!label || label === 'START') {
                     try {
                         console.log(`🔍 [START] Analyzing brand landing page...`);
+
+                        // === COLLECTIONS-ONLY STRATEGY ===
+                        // Redirect to /collections/ URL if we're on a /products/ or generic brand page
+                        const currentUrl = request.url;
+                        const isProductsPage = currentUrl.includes('/products/');
+                        const isCollectionsPage = currentUrl.includes('/collections/');
+
+                        if (isProductsPage && !isCollectionsPage) {
+                            // Redirect from /products/ to /collections/
+                            const collectionsUrl = currentUrl.replace('/products/', '/collections/');
+                            console.log(`   🔀 Redirecting from /products/ to /collections/: ${collectionsUrl}`);
+                            await crawler.addRequests([{ url: collectionsUrl, userData: { label: 'START' } }]);
+                            return; // Don't process this page
+                        }
+
+                        // If URL doesn't have /collections/, try to find and navigate to it
+                        if (!isCollectionsPage) {
+                            // Extract brand ID from URL and construct collections URL
+                            const brandIdMatch = currentUrl.match(/\/b\/[^/]+\/(\d+)/);
+                            if (brandIdMatch) {
+                                const brandSlugMatch = currentUrl.match(/\/b\/([^/]+)\//);
+                                if (brandSlugMatch) {
+                                    const collectionsUrl = `https://www.architonic.com/en/b/${brandSlugMatch[1]}/collections/${brandIdMatch[1]}/`;
+                                    console.log(`   🔀 Navigating to Collections tab: ${collectionsUrl}`);
+                                    await crawler.addRequests([{ url: collectionsUrl, userData: { label: 'START' } }]);
+                                    return;
+                                }
+                            }
+                        }
+
                         await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
-                        await page.waitForTimeout(3000); // Small buffer for JS to start
+                        await page.waitForTimeout(1500); // Reduced from 3000
 
                         // Extract Brand Name more robustly
                         let foundName = '';
@@ -716,7 +746,7 @@ class ScraperService {
                                 }
                             });
                         });
-                        await page.waitForTimeout(2000);
+                        await page.waitForTimeout(1000); // Reduced from 2000
 
                         console.log(`🔍 [START] Discovery: Extensive scrolling to reveal all items...`);
                         const discoveredSubLinks = new Set();
@@ -734,13 +764,13 @@ class ScraperService {
                             // Keyboard scroll is more reliable for infinite scroll triggers
                             try { await page.keyboard.press('End'); } catch (e) { }
 
-                            // Wait longer between scrolls for lazy loading
-                            await page.waitForTimeout(800);
+                            // Wait between scrolls for lazy loading (optimized for speed)
+                            await page.waitForTimeout(400); // Reduced from 800
 
                             const iterationResults = await page.evaluate(async (currentUrl) => {
                                 // Dynamic scroll amount based on page height
-                                window.scrollBy(0, 1500);
-                                await new Promise(r => setTimeout(r, 800)); // Wait for content to load
+                                window.scrollBy(0, 2000); // Increased scroll distance
+                                await new Promise(r => setTimeout(r, 400)); // Reduced from 800
 
                                 // 1. Find Load More
                                 const elements = Array.from(document.querySelectorAll('button, a, span, div'));
@@ -756,25 +786,25 @@ class ScraperService {
                                 const allLinks = Array.from(document.querySelectorAll('a'));
                                 const normalizedCurrent = currentUrl.replace(/\/$/, '');
 
-                                const tabs = allLinks
-                                    .filter(el => {
-                                        const text = el.innerText.trim().toLowerCase();
-                                        const isProductTab = text === 'products' || text.includes('all products') || text === 'produkte' || text === 'prodotti' || (text.includes('product') && !text.includes('project'));
-                                        return isProductTab && /\/(products|all-products)\//.test(el.href);
-                                    })
-                                    .map(el => el.href);
+                                // REMOVED: Generic /products/ tabs cause "Products by Brand" categories
+                                // We now SKIP these entirely and only focus on actual collection pages
+                                const tabs = []; // Intentionally empty - don't enqueue generic product tabs
 
+                                // === COLLECTIONS-ONLY: Filter to ONLY collection URLs ===
                                 const collections = allLinks
                                     .map(el => el.href)
                                     .filter(href => {
                                         if (!href || !href.includes('architonic.com')) return false;
+                                        // STRICT: Only allow /collection/ URLs, NEVER /products/
+                                        if (href.includes('/products/')) return false;
                                         const normalizedHref = href.replace(/\/$/, '');
                                         const isSamePage = normalizedHref === normalizedCurrent;
-                                        const isSubLink = href.includes('/collection/') || href.includes('/collections/') || href.includes('/category/') || href.includes('/product-group/');
+                                        const isCollectionLink = href.includes('/collection/');
                                         const isUtility = href.endsWith('/collections') || href.endsWith('/products') || !href.includes('/b/');
-                                        return !isSamePage && !href.includes('#') && isSubLink && !isUtility;
+                                        return !isSamePage && !href.includes('#') && isCollectionLink && !isUtility;
                                     });
 
+                                // Only collect products that are directly on this page (not from /products/ pages)
                                 const products = allLinks
                                     .map(el => el.href)
                                     .filter(href => (href.includes('/p/') || href.includes('/product/')) && href.includes('architonic.com'));
@@ -802,35 +832,32 @@ class ScraperService {
                         }
                         await page.evaluate(() => window.scrollTo(0, 0));
 
-                        // 0. Priority: Is the current URL already a products or collection page?
-                        const currentUrl = request.url;
-                        const isAlreadyDeep = currentUrl.includes('/products/') ||
-                            currentUrl.includes('/collection/') ||
-                            currentUrl.includes('/collections/') ||
-                            currentUrl.includes('/product-group/') ||
-                            currentUrl.includes('/category/');
-
-                        const allDiscoveryLinks = [...discoveredTabLinks, ...discoveredSubLinks];
+                        // === COLLECTIONS-ONLY: Filter out /products/ URLs completely ===
+                        const collectionOnlyLinks = [...discoveredSubLinks].filter(url =>
+                            !url.includes('/products/') && url.includes('/collection/')
+                        );
                         const uniqueProductLinks = [...discoveredProductLinks];
 
-                        console.log(`🔍 [START] Found ${discoveredTabLinks.size} product tabs, ${discoveredSubLinks.size} sub-collections, and ${uniqueProductLinks.length} direct products.`);
+                        console.log(`🔍 [START] Found ${collectionOnlyLinks.length} collection links and ${uniqueProductLinks.length} direct products.`);
 
-                        if (allDiscoveryLinks.length > 0) {
-                            await crawler.addRequests(allDiscoveryLinks.map(url => ({
+                        if (collectionOnlyLinks.length > 0) {
+                            await crawler.addRequests(collectionOnlyLinks.map(url => ({
                                 url,
                                 userData: { label: 'COLLECTION' }
                             })));
                         }
 
-                        if (uniqueProductLinks.length > 0) {
+                        // Products found directly on the collections page (rare but possible)  
+                        if (uniqueProductLinks.length > 0 && isCollectionsPage) {
                             await crawler.addRequests(uniqueProductLinks.map(url => ({
                                 url,
                                 userData: { label: 'PRODUCT', _brand: brandName, _coll: 'Featured' }
                             })));
                         }
 
-                        if (allDiscoveryLinks.length === 0 && uniqueProductLinks.length === 0 || isAlreadyDeep) {
-                            console.log(`🔍 [START] No sub-collections or products found, treating current page as collection.`);
+                        // If this is already a collection page with content, process it
+                        if (collectionOnlyLinks.length === 0 && isCollectionsPage) {
+                            console.log(`🔍 [START] On collections page, treating as main collection.`);
                             await crawler.addRequests([{ url: request.url, userData: { label: 'COLLECTION', singlePage: true } }]);
                         }
                     } catch (err) {
@@ -839,7 +866,7 @@ class ScraperService {
 
                 } else if (label === 'COLLECTION') {
                     await page.waitForLoadState('domcontentloaded').catch(() => { });
-                    await page.waitForTimeout(3000);
+                    await page.waitForTimeout(1500); // Reduced from 3000
 
                     // NEW: Detect pagination (e.g., page 2, 3...)
                     // Some collections like "Table" have explicit pagination at the bottom
@@ -865,7 +892,36 @@ class ScraperService {
                     }
 
                     let collectionName = await page.$eval('h1', el => el.innerText).catch(() => '');
-                    if (!collectionName || collectionName.includes('Collections by')) {
+
+                    // === DETECT AND SKIP GENERIC PRODUCT PAGES ===
+                    // "Products by [Brand]" is NOT a real category - it's the generic all-products page
+                    const isGenericProductPage = collectionName.toLowerCase().includes('products by') ||
+                        request.url.match(/\/products\/\d+\/?$/) ||
+                        request.url.match(/\/products\/\d+\/\d+\/?$/); // pagination of products page
+
+                    if (isGenericProductPage) {
+                        console.log(`   ⚠️ SKIPPING generic product page (not a real category): ${collectionName}`);
+                        // Still find sub-collections from this page, but don't scrape products from it
+                        const subCollectionLinks = await page.$$eval('a', (els) => {
+                            return els.map(el => el.href).filter(href => {
+                                if (!href || !href.includes('architonic.com')) return false;
+                                return (href.includes('/collection/') || href.includes('/collections/') || href.includes('/category/')) &&
+                                    !href.includes('/p/') && !href.includes('/product/') && !href.endsWith('/collections');
+                            });
+                        });
+                        const uniqueSubCollections = [...new Set(subCollectionLinks)].filter(l => l !== request.url);
+                        if (uniqueSubCollections.length > 0) {
+                            console.log(`   📂 Found ${uniqueSubCollections.length} sub-collections from generic page. Enqueueing...`);
+                            await enqueueLinks({
+                                urls: uniqueSubCollections,
+                                userData: { label: 'COLLECTION', _brand: brandName }
+                            });
+                        }
+                        return; // Skip processing products from this generic page
+                    }
+
+                    // Fix collection name if it contains unwanted patterns
+                    if (!collectionName || collectionName.includes('Collections by') || collectionName.includes('Products by')) {
                         try {
                             const parts = request.url.split('/');
                             const idx = parts.indexOf('collection');
@@ -887,9 +943,9 @@ class ScraperService {
                         let lastCount = 0;
                         let stableCycles = 0;
 
-                        for (let i = 0; i < 100; i++) {
-                            window.scrollBy(0, 2000);
-                            await new Promise(r => setTimeout(r, 1000));
+                        for (let i = 0; i < 50; i++) { // Reduced from 100 iterations
+                            window.scrollBy(0, 2500); // Increased scroll distance
+                            await new Promise(r => setTimeout(r, 500)); // Reduced from 1000
 
                             // Robust 'Load More' detection
                             const buttons = Array.from(document.querySelectorAll('button, a, span[role="button"]'));
@@ -908,7 +964,7 @@ class ScraperService {
                                 try {
                                     loadMore.scrollIntoView();
                                     loadMore.click();
-                                    await new Promise(r => setTimeout(r, 1500));
+                                    await new Promise(r => setTimeout(r, 800)); // Reduced from 1500
                                     stableCycles = 0; // Reset as we triggered a load
                                 } catch (e) { }
                             } else {
@@ -973,40 +1029,40 @@ class ScraperService {
 
                 } else if (label === 'PRODUCT') {
                     const { _brand, _coll } = request.userData;
-                    
+
                     // Add adaptive delay based on consecutive 403 errors
                     const adaptiveDelay = baseDelay + (consecutive403Count * 1000);
                     if (consecutive403Count > 0) {
                         console.log(`   ⏳ Rate limit protection: waiting ${adaptiveDelay}ms (${consecutive403Count} consecutive 403s)`);
                         await page.waitForTimeout(adaptiveDelay);
                     }
-                    
+
                     await page.waitForLoadState('domcontentloaded');
                     await page.waitForSelector('h1', { timeout: 10000 }).catch(() => { });
 
                     const name = await page.$eval('h1', el => el.innerText.trim()).catch(() => '');
-                    
+
                     // === 403 ERROR DETECTION ===
                     // Check if we hit a 403 error page (Architonic returns "403 ERROR" in H1)
-                    const isBlockedPage = name.toLowerCase().includes('403') || 
-                                          name.toLowerCase().includes('error') ||
-                                          name.toLowerCase().includes('forbidden') ||
-                                          name.toLowerCase().includes('access denied') ||
-                                          name.toLowerCase().includes('blocked');
-                    
+                    const isBlockedPage = name.toLowerCase().includes('403') ||
+                        name.toLowerCase().includes('error') ||
+                        name.toLowerCase().includes('forbidden') ||
+                        name.toLowerCase().includes('access denied') ||
+                        name.toLowerCase().includes('blocked');
+
                     if (isBlockedPage) {
                         consecutive403Count++;
                         console.log(`   🚫 [403 BLOCKED] Skipping blocked page: ${request.url} (consecutive: ${consecutive403Count})`);
-                        
-                        // If too many consecutive 403s, pause longer
+
+                        // If too many consecutive 403s, pause briefly then continue
                         if (consecutive403Count >= 5) {
-                            console.log(`   ⏸️ Too many 403s! Pausing for 30 seconds...`);
-                            await page.waitForTimeout(30000);
-                            consecutive403Count = 0; // Reset after long pause
+                            console.log(`   ⏸️ Too many 403s! Pausing for 10 seconds...`);
+                            await page.waitForTimeout(10000); // Reduced from 30000
+                            consecutive403Count = 0; // Reset after pause
                         }
                         return; // Skip this product entirely
                     }
-                    
+
                     // Reset consecutive counter on successful page
                     consecutive403Count = 0;
 
@@ -1093,12 +1149,12 @@ class ScraperService {
                     }
 
                     // Double-check name is valid (not an error page that slipped through)
-                    const isValidName = name && 
-                                        name.length > 2 && 
-                                        !name.toLowerCase().includes('403') &&
-                                        !name.toLowerCase().includes('error') &&
-                                        !name.toLowerCase().includes('forbidden');
-                    
+                    const isValidName = name &&
+                        name.length > 2 &&
+                        !name.toLowerCase().includes('403') &&
+                        !name.toLowerCase().includes('error') &&
+                        !name.toLowerCase().includes('forbidden');
+
                     if (isValidName && (img || name.length > 2)) {
                         let finalImg = img;
                         if (!finalImg || finalImg.includes('placeholder')) {
