@@ -192,39 +192,71 @@ function TableViewer({ data }) {
     // --- Export Handlers (Premium Styled) ---
 
     // Helper: Load image as data URL with size and format optimization
-    const getImageData = (url, options = {}) => {
+    const getImageData = async (url, options = {}) => {
+        if (!url) return null;
+
         // Explicitly define these in the function scope
         const maxWidth = options.maxWidth || 1000;
         const format = options.format || 'image/jpeg';
         const quality = options.quality || 0.85;
 
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.crossOrigin = "Anonymous";
-            img.src = url;
-            img.onload = () => {
-                const canvas = document.createElement("canvas");
-                const ratio = Math.min(1, maxWidth / img.width);
-                canvas.width = img.width * ratio;
-                canvas.height = img.height * ratio;
-                const ctx = canvas.getContext("2d");
+        // Helper to load image into canvas and return dataUrl
+        const loadImageToCanvas = (imgSrc) => {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.crossOrigin = "Anonymous";
+                img.onload = () => {
+                    const canvas = document.createElement("canvas");
+                    const ratio = Math.min(1, maxWidth / img.width);
+                    canvas.width = img.width * ratio;
+                    canvas.height = img.height * ratio;
+                    const ctx = canvas.getContext("2d");
 
-                if (format === 'image/jpeg') {
-                    ctx.fillStyle = "#FFFFFF";
-                    ctx.fillRect(0, 0, canvas.width, canvas.height);
-                } else {
-                    ctx.clearRect(0, 0, canvas.width, canvas.height);
-                }
+                    if (format === 'image/jpeg') {
+                        ctx.fillStyle = "#FFFFFF";
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    } else {
+                        ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    }
 
-                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                resolve({
-                    dataUrl: canvas.toDataURL(format, quality),
-                    width: canvas.width,
-                    height: canvas.height
-                });
-            };
-            img.onerror = () => resolve(null);
-        });
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    resolve({
+                        dataUrl: canvas.toDataURL(format, quality),
+                        width: canvas.width,
+                        height: canvas.height
+                    });
+                };
+                img.onerror = () => resolve(null);
+                img.src = imgSrc;
+            });
+        };
+
+        // Check if this is a proxy URL or external URL
+        const isProxyUrl = url.includes('/api/image-proxy');
+
+        if (isProxyUrl) {
+            try {
+                // Proxy returns raw binary image - convert to blob URL
+                const response = await fetch(url);
+                if (!response.ok) return null;
+
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+
+                const result = await loadImageToCanvas(blobUrl);
+
+                // Clean up blob URL
+                URL.revokeObjectURL(blobUrl);
+
+                return result;
+            } catch (e) {
+                console.warn('Image proxy fetch failed:', e);
+                return null;
+            }
+        } else {
+            // Local images - load directly
+            return loadImageToCanvas(url);
+        }
     };
 
     // Helper: Calculate fit dimensions maintaining aspect ratio (contain)

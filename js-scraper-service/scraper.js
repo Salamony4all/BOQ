@@ -729,9 +729,67 @@ class ScraperService {
 
                         if (onProgress) onProgress(20, `Identified Brand: ${brandName}...`, brandName);
 
+                        // === IMPROVED LOGO FETCHING FOR ARCHITONIC ===
+                        // Architonic brand logos are typically in the header/sidebar area
                         try {
-                            brandLogo = await page.$eval('.logo img, .brand-logo img, img[alt*="logo" i]', el => el.src);
-                        } catch (e) { brandLogo = ''; }
+                            brandLogo = await page.evaluate(() => {
+                                // Priority 1: Look for brand logo image in the brand header area
+                                const logoSelectors = [
+                                    // Architonic specific selectors
+                                    '[class*="brand-header"] img',
+                                    '[class*="brand-logo"] img',
+                                    '[class*="BrandHeader"] img',
+                                    '.brand-info img',
+                                    'a[href*="/b/"] img[src*="logo"]',
+                                    'header img[src*="logo"]',
+                                    // Generic but targeted
+                                    'img[alt*="logo" i]',
+                                    'img[src*="brand-logo"]',
+                                    'img[src*="brandlogo"]',
+                                    // Fallback: first image in header area
+                                    'header img',
+                                    '.header img'
+                                ];
+
+                                for (const selector of logoSelectors) {
+                                    const img = document.querySelector(selector);
+                                    if (img && img.src && img.src.includes('http')) {
+                                        // Skip common non-logo images
+                                        const src = img.src.toLowerCase();
+                                        if (!src.includes('placeholder') &&
+                                            !src.includes('spinner') &&
+                                            !src.includes('loading') &&
+                                            !src.includes('icon') &&
+                                            img.width > 20 && img.height > 10) {
+                                            return img.src;
+                                        }
+                                    }
+                                }
+
+                                // Priority 2: Look for any img with brand name in alt or src
+                                const brandElements = document.querySelectorAll('img');
+                                for (const img of brandElements) {
+                                    const alt = (img.alt || '').toLowerCase();
+                                    const src = (img.src || '').toLowerCase();
+                                    if ((alt.includes('logo') || src.includes('logo')) &&
+                                        img.src.includes('http') &&
+                                        img.width > 20) {
+                                        return img.src;
+                                    }
+                                }
+
+                                return '';
+                            });
+
+                            if (brandLogo) {
+                                console.log(`   🖼️ Found brand logo: ${brandLogo.substring(0, 80)}...`);
+                            } else {
+                                console.log(`   ⚠️ No brand logo found`);
+                            }
+                        } catch (e) {
+                            brandLogo = '';
+                            console.log(`   ⚠️ Logo fetch error: ${e.message}`);
+                        }
 
                         console.log(`Found brand: ${brandName}`);
 

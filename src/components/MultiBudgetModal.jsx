@@ -355,40 +355,11 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
         // Check if it's an external URL (not from our server)
         const isExternal = url.startsWith('http') && !url.includes('localhost:3001') && !url.includes(window.location.hostname);
 
-        if (isExternal) {
-            try {
-                const proxyUrl = `${API_BASE}/api/image-proxy?url=${encodeURIComponent(url)}`;
-                const response = await fetch(proxyUrl);
-                if (!response.ok) return null;
-                const data = await response.json();
-
-                return new Promise((resolve) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        const canvas = document.createElement("canvas");
-                        const ratio = Math.min(1, maxWidth / img.width);
-                        canvas.width = img.width * ratio;
-                        canvas.height = img.height * ratio;
-                        const ctx = canvas.getContext("2d");
-                        if (format === 'image/jpeg') {
-                            ctx.fillStyle = "#FFFFFF";
-                            ctx.fillRect(0, 0, canvas.width, canvas.height);
-                        } else {
-                            ctx.clearRect(0, 0, canvas.width, canvas.height);
-                        }
-                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                        resolve({ dataUrl: canvas.toDataURL(format, quality), width: canvas.width, height: canvas.height });
-                    };
-                    img.onerror = () => resolve(null);
-                    img.src = data.dataUrl;
-                });
-            } catch (e) { return null; }
-        } else {
-            // Local images - load directly
+        // Helper to load image into canvas and return dataUrl
+        const loadImageToCanvas = (imgSrc) => {
             return new Promise((resolve) => {
                 const img = new Image();
                 img.crossOrigin = "Anonymous";
-                img.src = url;
                 img.onload = () => {
                     const canvas = document.createElement("canvas");
                     const ratio = Math.min(1, maxWidth / img.width);
@@ -405,7 +376,34 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                     resolve({ dataUrl: canvas.toDataURL(format, quality), width: canvas.width, height: canvas.height });
                 };
                 img.onerror = () => resolve(null);
+                img.src = imgSrc;
             });
+        };
+
+        if (isExternal) {
+            try {
+                // Proxy returns raw binary image, not JSON
+                const proxyUrl = `${API_BASE}/api/image-proxy?url=${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) return null;
+
+                // Convert binary response to blob URL for loading
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+
+                const result = await loadImageToCanvas(blobUrl);
+
+                // Clean up blob URL
+                URL.revokeObjectURL(blobUrl);
+
+                return result;
+            } catch (e) {
+                console.warn('Image proxy fetch failed:', e);
+                return null;
+            }
+        } else {
+            // Local images - load directly
+            return loadImageToCanvas(url);
         }
     };
 
