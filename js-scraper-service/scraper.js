@@ -595,21 +595,21 @@ class ScraperService {
 
         // Track 403 errors for adaptive delay
         let consecutive403Count = 0;
-        let baseDelay = 500; // Reduced from 2000ms for faster scraping
+        let baseDelay = 1000; // Balance between speed and rate limiting
 
         const crawler = new PlaywrightCrawler({
-            // === SPEED-OPTIMIZED CONFIGURATION ===
-            maxConcurrency: 5, // Increased from 1 for parallel processing
-            minConcurrency: 3,
+            // === BALANCED SPEED + ANTI-BLOCK CONFIGURATION ===
+            maxConcurrency: 2, // Reduced from 5 to avoid 403 blocks
+            minConcurrency: 1,
             maxRequestsPerCrawl: 10000,
             useSessionPool: true, // Enable session pool for cookie persistence
             persistCookiesPerSession: true, // Persist cookies like a real browser
-            requestHandlerTimeoutSecs: 120, // Reduced from 900 for faster timeout
-            navigationTimeoutSecs: 60, // Reduced from 300 for faster timeout
+            requestHandlerTimeoutSecs: 120,
+            navigationTimeoutSecs: 60,
 
-            // Reduced delay for faster scraping (still has protection via 403 detection)
-            sameDomainDelaySecs: 1, // Reduced from 3 seconds
-            maxRequestRetries: 2, // Reduced from 3 for faster completion
+            // Moderate delay to avoid rate limiting
+            sameDomainDelaySecs: 2, // Increased from 1 to avoid 403
+            maxRequestRetries: 3, // Increased back to 3 for better recovery
 
             // Stealth browser settings
             launchContext: {
@@ -1054,10 +1054,10 @@ class ScraperService {
                         consecutive403Count++;
                         console.log(`   🚫 [403 BLOCKED] Skipping blocked page: ${request.url} (consecutive: ${consecutive403Count})`);
 
-                        // If too many consecutive 403s, pause briefly then continue
-                        if (consecutive403Count >= 5) {
-                            console.log(`   ⏸️ Too many 403s! Pausing for 10 seconds...`);
-                            await page.waitForTimeout(10000); // Reduced from 30000
+                        // If too many consecutive 403s, pause to let rate limit reset
+                        if (consecutive403Count >= 3) {
+                            console.log(`   ⏸️ Rate limit detected! Pausing for 15 seconds...`);
+                            await page.waitForTimeout(15000);
                             consecutive403Count = 0; // Reset after pause
                         }
                         return; // Skip this product entirely
