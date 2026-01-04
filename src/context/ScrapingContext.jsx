@@ -39,12 +39,43 @@ export function ScrapingProvider({ children }) {
         return 2500; // 2.5s normal
     }, []);
 
+    // Check for saved files on Railway (Smart Recovery)
+    const checkForSavedFile = useCallback(async (brandName) => {
+        try {
+            // normalizing name for comparison
+            const targetName = brandName.toLowerCase().trim();
+
+            const res = await fetch(`${API_BASE}/api/brands`);
+            if (!res.ok) return null;
+
+            const data = await res.json();
+            if (!data.brands || data.brands.length === 0) return null;
+
+            // Find most recent matching file
+            const match = data.brands
+                .filter(b => b.name.toLowerCase().trim() === targetName)
+                .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))[0];
+
+            if (match) {
+                // Check if this file was created AFTER we started scraping
+                // (To avoid picking up old scrapes)
+                console.log(`📂 Found saved backup for ${brandName}:`, match.filename);
+                return match;
+            }
+        } catch (e) {
+            console.warn('Failed to check for saved files:', e);
+        }
+        return null;
+    }, []);
+
     // Core polling function - NEVER STOPS, auto-recovers
-    const startPolling = useCallback((taskId, brandName, onComplete, onError) => {
+    const startPolling = useCallback(async (taskId, brandName, onComplete, onError) => {
         // Clear any existing polling
         if (pollingRef.current?.clear) {
             pollingRef.current.clear();
         }
+
+        const startTime = Date.now();
 
         // Reset connection status
         setScrapingState(prev => ({
@@ -148,6 +179,43 @@ export function ScrapingProvider({ children }) {
                         : prev.stage
                 }));
 
+                // SMART RECOVERY: If connection is bad, check if file was saved anyway!
+                if (currentErrorCount > 2) {
+                    const savedFile = await checkForSavedFile(brandName);
+                    if (savedFile) {
+                        try {
+                            const fileRes = await fetch(`${API_BASE}/api/brands/${savedFile.filename}`);
+                            if (fileRes.ok) {
+                                const fileData = await fileRes.json();
+
+                                // Only use if it looks new enough (created after we started)
+                                const fileTime = new Date(fileData.completedAt).getTime();
+                                if (fileTime > startTime) {
+                                    console.log('🎉 RECOVERED FROM SAVED FILE!');
+
+                                    if (pollIntervalId) clearTimeout(pollIntervalId);
+                                    pollingRef.current = null;
+
+                                    setScrapingState(prev => ({ ...prev, progress: 100, stage: 'Recovered from backup!' }));
+
+                                    setTimeout(() => {
+                                        setSuccessData({
+                                            brandName: fileData.brandInfo.name,
+                                            count: fileData.productCount,
+                                            enriched: 0
+                                        });
+                                        setScrapingState(prev => ({ ...prev, isActive: false }));
+                                        if (onComplete) onComplete(fileData);
+                                    }, 500);
+                                    return;
+                                }
+                            }
+                        } catch (recError) {
+                            console.error('Recovery failed:', recError);
+                        }
+                    }
+                }
+
                 // KEEP POLLING - use longer interval when errors occur
                 const nextInterval = getPollingInterval(currentErrorCount);
                 console.log(`🔄 Retrying in ${nextInterval / 1000}s (attempt ${currentErrorCount})`);
@@ -160,7 +228,7 @@ export function ScrapingProvider({ children }) {
 
         // Start first poll immediately
         poll();
-    }, [getPollingInterval]);
+    }, [getPollingInterval, checkForSavedFile]);
 
     // Refresh/Reconnect function - manually restarts polling
     const refreshConnection = useCallback(() => {
