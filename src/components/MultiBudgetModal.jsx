@@ -1791,7 +1791,12 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                         {/* Brand Logo Badge */}
                                         {row.brandLogo && (
                                             <div className={styles.brandLogoBadge}>
-                                                <img src={getFullUrl(row.brandLogo)} alt="" className={styles.badgeLogo} />
+                                                <img
+                                                    src={getFullUrl(row.brandLogo)}
+                                                    alt=""
+                                                    className={styles.badgeLogo}
+                                                    onError={(e) => { e.target.style.display = 'none'; }}
+                                                />
                                             </div>
                                         )}
 
@@ -1845,7 +1850,19 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                                 {row.selectedBrand ? (
                                                     <>
                                                         {row.brandLogo ? (
-                                                            <img src={getFullUrl(row.brandLogo)} alt="" className={styles.triggerLogo} />
+                                                            <img
+                                                                src={getFullUrl(row.brandLogo)}
+                                                                alt=""
+                                                                className={styles.triggerLogo}
+                                                                onError={(e) => {
+                                                                    e.target.style.display = 'none';
+                                                                    // Show initial instead
+                                                                    const initial = document.createElement('span');
+                                                                    initial.className = e.target.closest('button')?.querySelector('span')?.className || '';
+                                                                    initial.textContent = row.selectedBrand?.charAt(0) || '?';
+                                                                    e.target.parentNode?.insertBefore(initial, e.target);
+                                                                }}
+                                                            />
                                                         ) : (
                                                             <span className={styles.triggerInitial}>{row.selectedBrand.charAt(0)}</span>
                                                         )}
@@ -1870,7 +1887,20 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                                             }}
                                                         >
                                                             {b.logo ? (
-                                                                <img src={getFullUrl(b.logo)} alt="" className={styles.optionLogo} />
+                                                                <img
+                                                                    src={getFullUrl(b.logo)}
+                                                                    alt=""
+                                                                    className={styles.optionLogo}
+                                                                    onError={(e) => {
+                                                                        // Replace with initial on error
+                                                                        const span = document.createElement('span');
+                                                                        span.className = e.target.nextSibling?.previousSibling ? '' : '';
+                                                                        span.textContent = b.name.charAt(0);
+                                                                        span.style.cssText = 'width:22px;height:22px;background:white;border-radius:3px;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:11px;color:#7c3aed;flex-shrink:0;';
+                                                                        e.target.parentNode?.insertBefore(span, e.target);
+                                                                        e.target.style.display = 'none';
+                                                                    }}
+                                                                />
                                                             ) : (
                                                                 <span className={styles.optionInitial}>{b.name.charAt(0)}</span>
                                                             )}
@@ -2042,7 +2072,12 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                         {/* Brand Logo Badge in Modal */}
                         {previewLogo && (
                             <div className={styles.previewLogoBadge}>
-                                <img src={getFullUrl(previewLogo)} alt="brand logo" className={styles.previewBadgeLogo} />
+                                <img
+                                    src={getFullUrl(previewLogo)}
+                                    alt="brand logo"
+                                    className={styles.previewBadgeLogo}
+                                    onError={(e) => { e.target.parentNode.style.display = 'none'; }}
+                                />
                             </div>
                         )}
 

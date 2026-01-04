@@ -730,50 +730,56 @@ class ScraperService {
                         if (onProgress) onProgress(20, `Identified Brand: ${brandName}...`, brandName);
 
                         // === IMPROVED LOGO FETCHING FOR ARCHITONIC ===
-                        // Architonic brand logos are typically in the header/sidebar area
+                        // Architonic uses: a[href*="/b/"] containing img for brand logos
                         try {
                             brandLogo = await page.evaluate(() => {
-                                // Priority 1: Look for brand logo image in the brand header area
-                                const logoSelectors = [
-                                    // Architonic specific selectors
-                                    '[class*="brand-header"] img',
-                                    '[class*="brand-logo"] img',
-                                    '[class*="BrandHeader"] img',
-                                    '.brand-info img',
-                                    'a[href*="/b/"] img[src*="logo"]',
-                                    'header img[src*="logo"]',
-                                    // Generic but targeted
-                                    'img[alt*="logo" i]',
-                                    'img[src*="brand-logo"]',
-                                    'img[src*="brandlogo"]',
-                                    // Fallback: first image in header area
-                                    'header img',
-                                    '.header img'
-                                ];
-
-                                for (const selector of logoSelectors) {
-                                    const img = document.querySelector(selector);
+                                // Priority 1: Architonic-specific brand link logo (MOST RELIABLE)
+                                // Pattern: <a href="/en/b/brandname/ID/"><img src="...logo.png"/></a>
+                                const brandLinks = document.querySelectorAll('a[href*="/b/"]');
+                                for (const link of brandLinks) {
+                                    const img = link.querySelector('img');
                                     if (img && img.src && img.src.includes('http')) {
-                                        // Skip common non-logo images
                                         const src = img.src.toLowerCase();
-                                        if (!src.includes('placeholder') &&
-                                            !src.includes('spinner') &&
-                                            !src.includes('loading') &&
-                                            !src.includes('icon') &&
-                                            img.width > 20 && img.height > 10) {
+                                        const alt = (img.alt || '').toLowerCase();
+                                        // Check if it looks like a logo (has 'logo' in URL/alt, or is small/medium sized)
+                                        if (src.includes('/logo/') || src.includes('logo') || alt.includes('logo') || alt.includes('manufacturer')) {
                                             return img.src;
                                         }
                                     }
                                 }
 
-                                // Priority 2: Look for any img with brand name in alt or src
-                                const brandElements = document.querySelectorAll('img');
-                                for (const img of brandElements) {
+                                // Priority 2: Look for specific logo patterns in image URLs
+                                const logoSelectors = [
+                                    'img[alt*="Logo for manufacturer" i]',
+                                    'img[alt*="logo" i]',
+                                    'img[src*="/logo/"]',
+                                    '[class*="brand-header"] img',
+                                    '[class*="brand-logo"] img',
+                                    '[class*="BrandHeader"] img',
+                                    '.brand-info img',
+                                    'header img[src*="logo"]'
+                                ];
+
+                                for (const selector of logoSelectors) {
+                                    const img = document.querySelector(selector);
+                                    if (img && img.src && img.src.includes('http')) {
+                                        const src = img.src.toLowerCase();
+                                        if (!src.includes('placeholder') &&
+                                            !src.includes('spinner') &&
+                                            !src.includes('loading')) {
+                                            return img.src;
+                                        }
+                                    }
+                                }
+
+                                // Priority 3: Fallback - any image with 'logo' in src or alt
+                                const allImages = document.querySelectorAll('img');
+                                for (const img of allImages) {
                                     const alt = (img.alt || '').toLowerCase();
                                     const src = (img.src || '').toLowerCase();
-                                    if ((alt.includes('logo') || src.includes('logo')) &&
+                                    if ((alt.includes('logo') || src.includes('logo') || src.includes('/logo/')) &&
                                         img.src.includes('http') &&
-                                        img.width > 20) {
+                                        img.naturalWidth > 20) {
                                         return img.src;
                                     }
                                 }
@@ -782,9 +788,9 @@ class ScraperService {
                             });
 
                             if (brandLogo) {
-                                console.log(`   🖼️ Found brand logo: ${brandLogo.substring(0, 80)}...`);
+                                console.log(`   🖼️ Found brand logo: ${brandLogo.substring(0, 100)}...`);
                             } else {
-                                console.log(`   ⚠️ No brand logo found`);
+                                console.log(`   ⚠️ No brand logo found - will use fallback`);
                             }
                         } catch (e) {
                             brandLogo = '';
@@ -813,17 +819,17 @@ class ScraperService {
                         let lastHeight = 0;
                         let stableHeightCount = 0;
 
-                        // ENHANCED: Increased to 300 iterations to handle massive catalogs (40+ categories)
-                        // TEMP: Reduced to 5 for FAST VERIFICATION
-                        for (let i = 0; i < 300; i++) {
-                            const progressVal = Math.min(60, 20 + (i * 0.15));
+                        // ENHANCED: Increased iterations and wait times for thorough category discovery
+                        // This ensures all categories (even at the bottom like Education) are found
+                        for (let i = 0; i < 500; i++) {
+                            const progressVal = Math.min(60, 20 + (i * 0.1));
                             if (onProgress) onProgress(progressVal, `Discovering collections (Scan ${i})...`);
 
                             // Keyboard scroll is more reliable for infinite scroll triggers
                             try { await page.keyboard.press('End'); } catch (e) { }
 
-                            // Wait between scrolls for lazy loading (optimized for speed)
-                            await page.waitForTimeout(400); // Reduced from 800
+                            // Wait between scrolls for lazy loading (slightly longer for reliable loading)
+                            await page.waitForTimeout(600);
 
                             const iterationResults = await page.evaluate(async (currentUrl) => {
                                 // Dynamic scroll amount based on page height
@@ -876,11 +882,12 @@ class ScraperService {
                             iterationResults.products.forEach(l => discoveredProductLinks.add(l));
 
 
-                            // SMART BREAKER: Stop if height doesn't change for 5 consecutive scans
+                            // SMART BREAKER: Stop if height doesn't change for 12 consecutive scans
+                            // Increased from 5 to 12 to catch lazy-loaded categories like Education
                             if (iterationResults.height === lastHeight) {
                                 stableHeightCount++;
-                                if (stableHeightCount >= 5) {
-                                    console.log('   ✅ Reached bottom of page (height stable). Stopping discovery.');
+                                if (stableHeightCount >= 12) {
+                                    console.log(`   ✅ Reached bottom of page (height stable for 12 scans). Found ${discoveredSubLinks.size} collections.`);
                                     break;
                                 }
                             } else {
