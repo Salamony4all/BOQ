@@ -331,7 +331,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
                     Bulk update brand products using the Excel interface.
                 </div>
 
-                <div className={styles.brandListContainer} style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #334155', borderRadius: '6px', padding: '5px' }}>
+                <div className={styles.brandListContainer} style={{ maxHeight: '500px', minHeight: '200px', overflowY: 'auto', border: '1px solid #334155', borderRadius: '6px', padding: '5px' }}>
                     {allBrands.length === 0 ? (
                         <div className={styles.emptyList}>No brands found. Add one above to manage its database.</div>
                     ) : (
