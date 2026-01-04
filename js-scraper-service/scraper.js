@@ -730,10 +730,16 @@ class ScraperService {
                         if (onProgress) onProgress(20, `Identified Brand: ${brandName}...`, brandName);
 
                         // === IMPROVED LOGO FETCHING FOR ARCHITONIC ===
-                        // Architonic uses: a[href*="/b/"] containing img for brand logos
+                        // Priority 0: og:image meta tag (MOST RELIABLE for Architonic)
                         try {
                             brandLogo = await page.evaluate(() => {
-                                // Priority 1: Architonic-specific brand link logo (MOST RELIABLE)
+                                // Priority 0: Check og:image meta tag FIRST (Most reliable for Architonic)
+                                const ogImage = document.querySelector('meta[property="og:image"]');
+                                if (ogImage && ogImage.content && ogImage.content.includes('logo')) {
+                                    return ogImage.content;
+                                }
+
+                                // Priority 1: Architonic-specific brand link logo
                                 // Pattern: <a href="/en/b/brandname/ID/"><img src="...logo.png"/></a>
                                 const brandLinks = document.querySelectorAll('a[href*="/b/"]');
                                 for (const link of brandLinks) {
@@ -786,6 +792,12 @@ class ScraperService {
 
                                 return '';
                             });
+
+                            // Clean up WebP parameters for PDF compatibility
+                            if (brandLogo && brandLogo.includes('media.architonic.com') && brandLogo.includes('?')) {
+                                brandLogo = brandLogo.split('?')[0];
+                                console.log(`   🧹 Cleaned logo URL (removed webp params)`);
+                            }
 
                             if (brandLogo) {
                                 console.log(`   🖼️ Found brand logo: ${brandLogo.substring(0, 100)}...`);
