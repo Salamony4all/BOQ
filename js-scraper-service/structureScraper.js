@@ -85,6 +85,44 @@ class StructureScraper {
                     // Try to handle "enter site" or language selection screens
                     await this.handleInterstitials(page);
 
+                    // ⚡ IMPROVED: Extract Brand Info using Playwright (Real Browser)
+                    // This fixes issues where Axios misses og:image or dynamic content
+                    if (!brandInfo.logo || brandInfo.logo.includes('placeholder')) {
+                        console.log('   🕵️‍♂️ Attempting to refine brand logo via Playwright...');
+                        try {
+                            const pageLogo = await page.evaluate(() => {
+                                // 1. Check og:image (Best for Architonic)
+                                const og = document.querySelector('meta[property="og:image"]');
+                                if (og && og.content && og.content.includes('logo')) return og.content;
+
+                                // 2. Architonic Selectors
+                                const selectors = [
+                                    '.nt-brand-header__logo img',
+                                    '.brand-logo img',
+                                    'img[alt*="Logo"]',
+                                    'img[src*="logo"]'
+                                ];
+                                for (const s of selectors) {
+                                    const el = document.querySelector(s);
+                                    if (el && el.src) return el.src;
+                                }
+                                return null;
+                            });
+
+                            if (pageLogo) {
+                                let refinedLogo = pageLogo;
+                                // Cleanup
+                                if (refinedLogo.startsWith('//')) refinedLogo = 'https:' + refinedLogo;
+                                // Architonic cleanup
+                                if (refinedLogo.includes('media.architonic.com') && refinedLogo.includes('?')) {
+                                    refinedLogo = refinedLogo.split('?')[0];
+                                }
+                                console.log(`      ✓ Refined Logo found: ${refinedLogo}`);
+                                brandInfo.logo = refinedLogo;
+                            }
+                        } catch (e) { console.log('      ⚠️ Logo refinement failed:', e.message); }
+                    }
+
                     // Find Main Categories
                     const categories = await this.discoverHierarchyLinks(page, baseUrl);
                     console.log(`   Found ${categories.length} main categories/links`);
@@ -459,12 +497,12 @@ class StructureScraper {
                         `img[alt^="${name}"]`,          // Starts with Brand Name
                         '.header-logo img'
                     ];
-                    
-                    for(const sel of selectors) {
+
+                    for (const sel of selectors) {
                         const el = $(sel).first();
-                        if(el.length) {
+                        if (el.length) {
                             const src = el.attr('src') || el.attr('data-src');
-                            if(src && !src.includes('placeholder')) {
+                            if (src && !src.includes('placeholder')) {
                                 logo = src;
                                 break;
                             }
@@ -477,17 +515,17 @@ class StructureScraper {
             if (!logo) {
                 // Get all images
                 const images = $('img').toArray();
-                
+
                 // Score them
                 const candidates = [];
                 images.forEach(el => {
                     const src = $(el).attr('src') || $(el).attr('data-src') || '';
                     if (!src || src.length < 5) return;
-                    
+
                     const alt = $(el).attr('alt') || '';
                     const lowerSrc = src.toLowerCase();
                     const lowerAlt = alt.toLowerCase();
-                    
+
                     let score = 0;
                     if (lowerSrc.includes('logo')) score += 10;
                     if (lowerAlt.includes(name.toLowerCase())) score += 20;
@@ -498,7 +536,7 @@ class StructureScraper {
                     if (lowerSrc.includes('footer')) score -= 50;
                     if (lowerSrc.includes('social')) score -= 50;
                     if (lowerSrc.includes('icon')) score -= 20;
-                    if (lowerSrc.includes('placeholder')) score -= 50; 
+                    if (lowerSrc.includes('placeholder')) score -= 50;
                     if (lowerSrc.includes('blank')) score -= 50;
 
                     if (score > 0) candidates.push({ src, score });
@@ -507,7 +545,7 @@ class StructureScraper {
                 candidates.sort((a, b) => b.score - a.score);
                 if (candidates.length > 0) logo = candidates[0].src;
             }
- 
+
             // Normalize URL
             if (logo) {
                 if (!logo.startsWith('http')) {
@@ -519,7 +557,7 @@ class StructureScraper {
                     logo = logo.split('?')[0];
                 }
             }
-            
+
             console.log(`      Brand Info Found: ${name} (Logo: ${logo ? 'Yes' : 'No'})`);
 
             return { name, logo };
