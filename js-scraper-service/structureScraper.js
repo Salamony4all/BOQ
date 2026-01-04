@@ -52,7 +52,17 @@ class StructureScraper {
             maxConcurrency: 2, // Reduced for CPU stability
             maxRequestsPerCrawl: 300,
             navigationTimeoutSecs: 60,
-            headless: false, // Debugging: Show the browser!
+            // Ensure headless on production (Railway), optional debug locally
+            headless: true,
+
+            // Important: Masquerade as real browser
+            launchContext: {
+                useChrome: false,
+                userAgent: this.userAgent,
+                launchOptions: {
+                    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+                }
+            },
 
             requestHandler: async ({ page, request, enqueueLinks }) => {
                 // Check for external cancellation
@@ -72,6 +82,11 @@ class StructureScraper {
                 if (onProgress && label === 'CATEGORY') {
                     onProgress(Math.min(90, 20 + (visitedUrls.size / 5)), `Harvesting ${category}...`);
                 }
+
+                try {
+                    // Randomize mouse movements/viewport to look human
+                    await page.setViewportSize({ width: 1366, height: 768 });
+                } catch (e) { }
 
                 // Wait for network idle to ensure JS has executed (important for sites like Amara Art)
                 try {
