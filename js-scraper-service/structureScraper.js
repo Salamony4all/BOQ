@@ -445,21 +445,29 @@ class StructureScraper {
 
             // Architonic Specific Logic
             if (isArchitonic) {
-                const selectors = [
-                    '.nt-brand-header__logo img',   // New Architonic
-                    '.brand-logo img',              // Standard
-                    '.manufacturer-logo img',
-                    `img[alt^="${name}"]`,          // Starts with Brand Name
-                    '.header-logo img'
-                ];
+                // Check meta og:image first (Most reliable)
+                const ogImage = $('meta[property="og:image"]').attr('content');
+                if (ogImage && ogImage.includes('logo')) {
+                    logo = ogImage;
+                }
 
-                for (const sel of selectors) {
-                    const el = $(sel).first();
-                    if (el.length) {
-                        const src = el.attr('src') || el.attr('data-src');
-                        if (src && !src.includes('placeholder')) {
-                            logo = src;
-                            break;
+                if (!logo) {
+                    const selectors = [
+                        '.nt-brand-header__logo img',   // New Architonic
+                        '.brand-logo img',              // Standard
+                        '.manufacturer-logo img',
+                        `img[alt^="${name}"]`,          // Starts with Brand Name
+                        '.header-logo img'
+                    ];
+                    
+                    for(const sel of selectors) {
+                        const el = $(sel).first();
+                        if(el.length) {
+                            const src = el.attr('src') || el.attr('data-src');
+                            if(src && !src.includes('placeholder')) {
+                                logo = src;
+                                break;
+                            }
                         }
                     }
                 }
@@ -469,17 +477,17 @@ class StructureScraper {
             if (!logo) {
                 // Get all images
                 const images = $('img').toArray();
-
+                
                 // Score them
                 const candidates = [];
                 images.forEach(el => {
                     const src = $(el).attr('src') || $(el).attr('data-src') || '';
                     if (!src || src.length < 5) return;
-
+                    
                     const alt = $(el).attr('alt') || '';
                     const lowerSrc = src.toLowerCase();
                     const lowerAlt = alt.toLowerCase();
-
+                    
                     let score = 0;
                     if (lowerSrc.includes('logo')) score += 10;
                     if (lowerAlt.includes(name.toLowerCase())) score += 20;
@@ -490,7 +498,7 @@ class StructureScraper {
                     if (lowerSrc.includes('footer')) score -= 50;
                     if (lowerSrc.includes('social')) score -= 50;
                     if (lowerSrc.includes('icon')) score -= 20;
-                    if (lowerSrc.includes('placeholder')) score -= 50;
+                    if (lowerSrc.includes('placeholder')) score -= 50; 
                     if (lowerSrc.includes('blank')) score -= 50;
 
                     if (score > 0) candidates.push({ src, score });
@@ -499,12 +507,19 @@ class StructureScraper {
                 candidates.sort((a, b) => b.score - a.score);
                 if (candidates.length > 0) logo = candidates[0].src;
             }
-
+ 
             // Normalize URL
-            if (logo && !logo.startsWith('http')) {
-                logo = new URL(logo, url).href;
+            if (logo) {
+                if (!logo.startsWith('http')) {
+                    logo = new URL(logo, url).href;
+                }
+                // Architonic cleanup: remove query params to get full res PNG
+                // e.g. .../logo.png?width=96&format=webp -> .../logo.png
+                if (logo.includes('media.architonic.com') && logo.includes('?')) {
+                    logo = logo.split('?')[0];
+                }
             }
-
+            
             console.log(`      Brand Info Found: ${name} (Logo: ${logo ? 'Yes' : 'No'})`);
 
             return { name, logo };
