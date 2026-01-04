@@ -26,17 +26,24 @@ export function ScrapingProvider({ children }) {
     // Clear polling when unmounting
     useEffect(() => {
         return () => {
-            if (pollingRef.current) {
-                clearInterval(pollingRef.current);
+            if (pollingRef.current?.clear) {
+                pollingRef.current.clear();
             }
         };
     }, []);
 
-    // Core polling function - can be called to restart polling
+    // Adaptive polling interval based on error state
+    const getPollingInterval = useCallback((errorCount) => {
+        if (errorCount >= 5) return 8000; // 8s when many errors
+        if (errorCount >= 3) return 5000; // 5s when some errors
+        return 2500; // 2.5s normal
+    }, []);
+
+    // Core polling function - NEVER STOPS, auto-recovers
     const startPolling = useCallback((taskId, brandName, onComplete, onError) => {
         // Clear any existing polling
-        if (pollingRef.current) {
-            clearInterval(pollingRef.current);
+        if (pollingRef.current?.clear) {
+            pollingRef.current.clear();
         }
 
         // Reset connection status
@@ -46,12 +53,21 @@ export function ScrapingProvider({ children }) {
             consecutiveErrors: 0
         }));
 
-        // Start polling for task status
-        pollingRef.current = setInterval(async () => {
+        let currentErrorCount = 0;
+        let pollIntervalId = null;
+
+        // Recursive polling function that adapts to errors
+        const poll = async () => {
             try {
+                // Longer timeout - Railway can be slow under load
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
                 const res = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
-                    signal: AbortSignal.timeout(10000) // 10s timeout
+                    signal: controller.signal
                 });
+
+                clearTimeout(timeoutId);
 
                 if (!res.ok) {
                     throw new Error(`HTTP ${res.status}`);
@@ -60,6 +76,7 @@ export function ScrapingProvider({ children }) {
                 const task = await res.json();
 
                 // Successfully got response - reset error counter
+                currentErrorCount = 0;
                 setScrapingState(prev => ({
                     ...prev,
                     isConnected: true,
@@ -68,7 +85,7 @@ export function ScrapingProvider({ children }) {
                 }));
 
                 if (task.status === 'completed') {
-                    clearInterval(pollingRef.current);
+                    if (pollIntervalId) clearTimeout(pollIntervalId);
                     pollingRef.current = null;
 
                     setScrapingState(prev => ({ ...prev, progress: 100, stage: 'Complete!' }));
@@ -86,18 +103,21 @@ export function ScrapingProvider({ children }) {
                         // Call completion callback
                         if (onComplete) onComplete(task);
                     }, 500);
+                    return; // Stop polling
 
                 } else if (task.status === 'failed') {
-                    clearInterval(pollingRef.current);
+                    if (pollIntervalId) clearTimeout(pollIntervalId);
                     pollingRef.current = null;
 
                     setScrapingState(prev => ({ ...prev, isActive: false }));
                     if (onError) onError(new Error(task.error || 'Scraping failed'));
+                    return; // Stop polling
 
                 } else if (task.status === 'cancelled') {
-                    clearInterval(pollingRef.current);
+                    if (pollIntervalId) clearTimeout(pollIntervalId);
                     pollingRef.current = null;
                     setScrapingState(prev => ({ ...prev, isActive: false }));
+                    return; // Stop polling
 
                 } else {
                     // Update progress
@@ -108,26 +128,39 @@ export function ScrapingProvider({ children }) {
                         brandName: task.brandName || prev.brandName
                     }));
                 }
+
+                // Schedule next poll with normal interval
+                pollIntervalId = setTimeout(poll, getPollingInterval(0));
+
             } catch (e) {
-                console.error('Polling error:', e.message);
+                console.warn('Polling error (will retry):', e.message);
 
-                // Track consecutive errors
-                setScrapingState(prev => {
-                    const newErrorCount = prev.consecutiveErrors + 1;
-                    const isDisconnected = newErrorCount >= 3;
+                // Track consecutive errors but KEEP POLLING
+                currentErrorCount++;
+                const isDisconnected = currentErrorCount >= 3;
 
-                    return {
-                        ...prev,
-                        consecutiveErrors: newErrorCount,
-                        isConnected: !isDisconnected,
-                        stage: isDisconnected
-                            ? '⚠️ Connection lost - Click refresh to reconnect'
-                            : prev.stage
-                    };
-                });
+                setScrapingState(prev => ({
+                    ...prev,
+                    consecutiveErrors: currentErrorCount,
+                    isConnected: !isDisconnected,
+                    stage: isDisconnected
+                        ? `⚠️ Connection unstable (retrying... ${currentErrorCount})`
+                        : prev.stage
+                }));
+
+                // KEEP POLLING - use longer interval when errors occur
+                const nextInterval = getPollingInterval(currentErrorCount);
+                console.log(`🔄 Retrying in ${nextInterval / 1000}s (attempt ${currentErrorCount})`);
+                pollIntervalId = setTimeout(poll, nextInterval);
             }
-        }, 2000);
-    }, []);
+        };
+
+        // Store reference so we can clear it
+        pollingRef.current = { clear: () => { if (pollIntervalId) clearTimeout(pollIntervalId); } };
+
+        // Start first poll immediately
+        poll();
+    }, [getPollingInterval]);
 
     // Refresh/Reconnect function - manually restarts polling
     const refreshConnection = useCallback(() => {
@@ -199,8 +232,8 @@ export function ScrapingProvider({ children }) {
 
     const cancelCurrentScrape = async () => {
         // Stop polling first
-        if (pollingRef.current) {
-            clearInterval(pollingRef.current);
+        if (pollingRef.current?.clear) {
+            pollingRef.current.clear();
             pollingRef.current = null;
         }
 

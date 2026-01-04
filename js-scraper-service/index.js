@@ -6,17 +6,30 @@
  * - StructureScraper (Hierarchical Category Harvester)
  * 
  * Designed to be called from the main Vercel app as a sidecar.
+ * 
+ * PERSISTENT STORAGE: Completed scrapes are saved to /data volume
+ * so they survive restarts and can be retrieved later.
  */
 
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import axios from 'axios';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import ScraperService from './scraper.js';
 import StructureScraper from './structureScraper.js';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 const app = express();
 const PORT = process.env.PORT || 3002;
+
+// Persistent storage directory (Railway volume mount point)
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const BRANDS_DIR = path.join(DATA_DIR, 'brands');
 
 // Initialize scrapers
 const scraperService = new ScraperService();
@@ -26,8 +39,65 @@ const structureScraper = new StructureScraper();
 app.use(cors());
 app.use(express.json());
 
-// Task tracking for async operations
+// Task tracking for async operations (in-memory, for progress tracking)
 const tasks = new Map();
+
+// ===================== PERSISTENT STORAGE =====================
+
+// Ensure data directories exist on startup
+async function initStorage() {
+    try {
+        await fs.mkdir(DATA_DIR, { recursive: true });
+        await fs.mkdir(BRANDS_DIR, { recursive: true });
+        console.log(`📁 Persistent storage initialized at ${DATA_DIR}`);
+    } catch (e) {
+        console.error('Failed to initialize storage:', e.message);
+    }
+}
+
+// Save a completed brand to persistent storage
+async function saveBrandToStorage(brandName, brandData) {
+    try {
+        const safeName = brandName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+        const filename = `${safeName}_${Date.now()}.json`;
+        const filepath = path.join(BRANDS_DIR, filename);
+
+        await fs.writeFile(filepath, JSON.stringify(brandData, null, 2));
+        console.log(`💾 Brand saved to persistent storage: ${filepath}`);
+        return filepath;
+    } catch (e) {
+        console.error('Failed to save brand:', e.message);
+        return null;
+    }
+}
+
+// Load all saved brands from storage
+async function loadSavedBrands() {
+    try {
+        const files = await fs.readdir(BRANDS_DIR);
+        const jsonFiles = files.filter(f => f.endsWith('.json'));
+
+        const brands = await Promise.all(jsonFiles.map(async (filename) => {
+            try {
+                const filepath = path.join(BRANDS_DIR, filename);
+                const content = await fs.readFile(filepath, 'utf-8');
+                const data = JSON.parse(content);
+                return { filename, ...data };
+            } catch (e) {
+                console.warn(`Failed to parse ${filename}:`, e.message);
+                return null;
+            }
+        }));
+
+        return brands.filter(b => b !== null);
+    } catch (e) {
+        console.error('Failed to load brands:', e.message);
+        return [];
+    }
+}
+
+// Initialize storage on module load
+initStorage();
 
 // ===================== HEALTH CHECK =====================
 app.get('/health', (req, res) => {
@@ -35,8 +105,52 @@ app.get('/health', (req, res) => {
         status: 'OK',
         service: 'js-scraper-service',
         timestamp: new Date().toISOString(),
-        scrapers: ['universal', 'architonic', 'structure']
+        scrapers: ['universal', 'architonic', 'structure'],
+        storageDir: DATA_DIR
     });
+});
+
+// ===================== SAVED BRANDS ENDPOINTS =====================
+// List all saved brands (for recovery after UI disconnect)
+app.get('/brands', async (req, res) => {
+    try {
+        const brands = await loadSavedBrands();
+        res.json({
+            success: true,
+            count: brands.length,
+            brands: brands.map(b => ({
+                filename: b.filename,
+                name: b.brandInfo?.name || b.brandName || 'Unknown',
+                productCount: b.productCount || b.products?.length || 0,
+                completedAt: b.completedAt,
+                logo: b.brandInfo?.logo || ''
+            }))
+        });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Get a specific saved brand's full data
+app.get('/brands/:filename', async (req, res) => {
+    try {
+        const filepath = path.join(BRANDS_DIR, req.params.filename);
+        const content = await fs.readFile(filepath, 'utf-8');
+        res.json(JSON.parse(content));
+    } catch (e) {
+        res.status(404).json({ error: 'Brand file not found' });
+    }
+});
+
+// Delete a saved brand file
+app.delete('/brands/:filename', async (req, res) => {
+    try {
+        const filepath = path.join(BRANDS_DIR, req.params.filename);
+        await fs.unlink(filepath);
+        res.json({ success: true, message: 'Brand deleted' });
+    } catch (e) {
+        res.status(404).json({ error: 'Brand file not found' });
+    }
 });
 
 // ===================== TASK STATUS =====================
@@ -117,7 +231,8 @@ app.post('/scrape', async (req, res) => {
                 const brandName = name || result.brandInfo?.name || 'Unknown Brand';
                 const brandLogo = result.brandInfo?.logo || '';
 
-                tasks.set(taskId, {
+                // Prepare completed task data
+                const completedData = {
                     id: taskId,
                     status: 'completed',
                     progress: 100,
@@ -125,10 +240,16 @@ app.post('/scrape', async (req, res) => {
                     products,
                     brandInfo: { name: brandName, logo: brandLogo },
                     productCount: products.length,
-                    completedAt: new Date().toISOString()
-                });
+                    completedAt: new Date().toISOString(),
+                    sourceUrl: url
+                };
 
-                console.log(`✅ Task ${taskId} completed with ${products.length} products`);
+                tasks.set(taskId, completedData);
+
+                // PERSIST: Save to file even if frontend disconnects
+                await saveBrandToStorage(brandName, completedData);
+
+                console.log(`✅ Task ${taskId} completed with ${products.length} products (SAVED TO DISK)`);
 
             } catch (error) {
                 console.error(`❌ Task ${taskId} failed:`, error.message);
@@ -207,7 +328,8 @@ app.post('/scrape-structure', async (req, res) => {
                 const products = result.products || [];
                 const brandName = name || result.brandInfo?.name || 'Unknown Brand';
 
-                tasks.set(taskId, {
+                // Prepare completed task data
+                const completedData = {
                     id: taskId,
                     status: 'completed',
                     progress: 100,
@@ -215,10 +337,16 @@ app.post('/scrape-structure', async (req, res) => {
                     products,
                     brandInfo: result.brandInfo,
                     productCount: products.length,
-                    completedAt: new Date().toISOString()
-                });
+                    completedAt: new Date().toISOString(),
+                    sourceUrl: url
+                };
 
-                console.log(`✅ Structure task ${taskId} completed with ${products.length} products`);
+                tasks.set(taskId, completedData);
+
+                // PERSIST: Save to file even if frontend disconnects
+                await saveBrandToStorage(brandName, completedData);
+
+                console.log(`✅ Structure task ${taskId} completed with ${products.length} products (SAVED TO DISK)`);
 
             } catch (error) {
                 console.error(`❌ Structure task ${taskId} failed:`, error.message);
@@ -296,7 +424,8 @@ app.post('/scrape-architonic', async (req, res) => {
                 const products = result.products || [];
                 const brandName = name || result.brandInfo?.name || 'Architonic Brand';
 
-                tasks.set(taskId, {
+                // Prepare completed task data
+                const completedData = {
                     id: taskId,
                     status: 'completed',
                     progress: 100,
@@ -304,10 +433,16 @@ app.post('/scrape-architonic', async (req, res) => {
                     products,
                     brandInfo: result.brandInfo,
                     productCount: products.length,
-                    completedAt: new Date().toISOString()
-                });
+                    completedAt: new Date().toISOString(),
+                    sourceUrl: url
+                };
 
-                console.log(`✅ Architonic task ${taskId} completed with ${products.length} products`);
+                tasks.set(taskId, completedData);
+
+                // PERSIST: Save to file even if frontend disconnects
+                await saveBrandToStorage(brandName, completedData);
+
+                console.log(`✅ Architonic task ${taskId} completed with ${products.length} products (SAVED TO DISK)`);
 
             } catch (error) {
                 console.error(`❌ Architonic task ${taskId} failed:`, error.message);
