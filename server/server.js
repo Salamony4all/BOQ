@@ -328,6 +328,14 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', message: 'Server is running' });
 });
 
+// Get Scraper Service URL for UI links (Dashboard)
+app.get('/api/scraper-config', (req, res) => {
+  res.json({
+    url: JS_SCRAPER_SERVICE_URL || null,
+    dashboardUrl: JS_SCRAPER_SERVICE_URL ? `${JS_SCRAPER_SERVICE_URL}/dashboard` : null
+  });
+});
+
 // Debug endpoint
 app.get('/api/debug', async (req, res) => {
   try {
@@ -583,9 +591,9 @@ app.delete('/api/tasks/:id', (req, res) => {
 });
 
 // --- Proxy Endpoints for Persistent Storage (Sidecar) ---
-app.get('/api/brands', async (req, res) => {
+app.get('/api/railway-brands', async (req, res) => {
   if (!JS_SCRAPER_SERVICE_URL) {
-    console.warn('⚠️ JS_SCRAPER_SERVICE_URL not configured, cannot list saved brands');
+    // console.warn('⚠️ JS_SCRAPER_SERVICE_URL not configured, cannot list saved brands');
     return res.json({ brands: [] });
   }
   try {
@@ -597,14 +605,47 @@ app.get('/api/brands', async (req, res) => {
   }
 });
 
-app.get('/api/brands/:filename', async (req, res) => {
+app.get('/api/railway-brands/:filename', async (req, res) => {
   if (!JS_SCRAPER_SERVICE_URL) return res.status(404).json({ error: 'Sidecar not configured' });
   try {
     const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/brands/${req.params.filename}`, { timeout: 10000 });
     res.json(response.data);
   } catch (error) {
-    // console.warn('Failed to fetch specific brand:', error.message);
     res.status(404).json({ error: 'Brand not found on sidecar' });
+  }
+});
+
+// Import endpoint: Restore a brand from Railway Backup to Local DB
+app.post('/api/railway-brands/import/:filename', async (req, res) => {
+  try {
+    if (!JS_SCRAPER_SERVICE_URL) throw new Error('Sidecar not configured');
+
+    // 1. Fetch from Railway
+    const filename = req.params.filename;
+    console.log(`📥 Importing brand from railway: ${filename}`);
+    const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/brands/${filename}`, { timeout: 15000 });
+    const data = response.data; // { brandInfo: { name, logo }, products: [], ... }
+
+    // 2. Format for Local Storage
+    const id = Date.now();
+    const newBrand = {
+      id,
+      name: (data.brandInfo?.name || filename).replace(/_/g, ' '),
+      logo: data.brandInfo?.logo || '',
+      budgetTier: 'mid', // Default
+      origin: 'Imported',
+      products: data.products || [],
+      createdAt: new Date(),
+      scrapedWith: 'Railway-Cloud-Restore'
+    };
+
+    // 3. Save to Local DB
+    await brandStorage.saveBrand(newBrand);
+
+    res.json({ success: true, count: newBrand.products.length, brandName: newBrand.name });
+  } catch (e) {
+    console.error('Import failed:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });
 

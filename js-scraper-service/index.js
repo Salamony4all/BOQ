@@ -512,6 +512,169 @@ app.get('/image-proxy', async (req, res) => {
 });
 
 
+// ===================== VOLUME MANAGER UI =====================
+
+// Serve a simple dashboard to manage persistent files
+app.get('/dashboard', (req, res) => {
+    res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Railway Volume Manager</title>
+            <style>
+                body { font-family: -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #1a1a1a; color: #fff; }
+                h1 { border-bottom: 1px solid #333; padding-bottom: 10px; }
+                .card { background: #2a2a2a; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+                .file-list { list-style: none; padding: 0; }
+                .file-item { display: flex; justify-content: space-between; padding: 10px; border-bottom: 1px solid #333; align-items: center; }
+                .file-item:last-child { border-bottom: none; }
+                .btn { padding: 5px 10px; border-radius: 4px; text-decoration: none; cursor: pointer; border: none; font-size: 14px; }
+                .btn-download { background: #3b82f6; color: white; }
+                .btn-delete { background: #ef4444; color: white; margin-left: 10px; }
+                .btn-refresh { background: #10b981; color: white; margin-bottom: 10px; display: inline-block; }
+                .drop-zone { border: 2px dashed #444; padding: 40px; text-align: center; border-radius: 8px; margin-bottom: 20px; transition: 0.2s; }
+                .drop-zone.hover { border-color: #3b82f6; background: #222; }
+                pre { background: #111; padding: 10px; overflow: auto; max-height: 200px; font-size: 12px; }
+                .timestamp { color: #888; font-size: 12px; margin-left: 10px; }
+            </style>
+        </head>
+        <body>
+            <h1>📦 persistent-storage/brands</h1>
+            
+            <div class="card">
+                <h3>📤 Upload Recovery File</h3>
+                <div class="drop-zone" id="dropZone">
+                    Drag & Drop JSON files here or click to upload
+                    <input type="file" id="fileInput" style="display: none" accept=".json">
+                </div>
+            </div>
+
+            <div class="card">
+                <div style="display:flex; justify-content:space-between; align-items:center">
+                    <h3>📂 Saved Files</h3>
+                    <a href="#" onclick="loadFiles(); return false;" class="btn btn-refresh">🔄 Refresh</a>
+                </div>
+                <div id="loading">Loading...</div>
+                <ul class="file-list" id="fileList"></ul>
+            </div>
+
+            <script>
+                async function loadFiles() {
+                    const el = document.getElementById('fileList');
+                    const loading = document.getElementById('loading');
+                    loading.style.display = 'block';
+                    el.innerHTML = '';
+
+                    try {
+                        const res = await fetch('/brands');
+                        const data = await res.json();
+                        loading.style.display = 'none';
+
+                        if (data.brands.length === 0) {
+                            el.innerHTML = '<li style="padding:20px; text-align:center; color:#666">No saved brands found</li>';
+                            return;
+                        }
+
+                        data.brands.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+
+                        data.brands.forEach(file => {
+                            const li = document.createElement('li');
+                            li.className = 'file-item';
+                            const date = new Date(file.completedAt).toLocaleString();
+                            li.innerHTML = \`
+                                <div>
+                                    <strong>\${file.name}</strong> 
+                                    <span class="timestamp">(\${file.productCount} products)</span>
+                                    <br>
+                                    <small style="color:#666">\${file.filename}</small>
+                                    <span class="timestamp">\${date}</span>
+                                </div>
+                                <div>
+                                    <a href="/brands/\${file.filename}" target="_blank" class="btn btn-download">⬇️ JSON</a>
+                                    <button onclick="deleteFile('\${file.filename}')" class="btn btn-delete">🗑️</button>
+                                </div>
+                            \`;
+                            el.appendChild(li);
+                        });
+                    } catch (e) {
+                        loading.innerText = 'Error loading files: ' + e.message;
+                    }
+                }
+
+                async function deleteFile(filename) {
+                    if(!confirm('Delete ' + filename + '?')) return;
+                    await fetch('/brands/' + filename, { method: 'DELETE' });
+                    loadFiles();
+                }
+
+                // File Upload Logic
+                const dropZone = document.getElementById('dropZone');
+                const fileInput = document.getElementById('fileInput');
+
+                dropZone.onclick = () => fileInput.click();
+                
+                dropZone.ondragover = (e) => { e.preventDefault(); dropZone.classList.add('hover'); };
+                dropZone.ondragleave = () => dropZone.classList.remove('hover');
+                
+                dropZone.ondrop = (e) => {
+                    e.preventDefault();
+                    dropZone.classList.remove('hover');
+                    handleFiles(e.dataTransfer.files);
+                };
+
+                fileInput.onchange = (e) => handleFiles(e.target.files);
+
+                async function handleFiles(files) {
+                    if(files.length === 0) return;
+                    const file = files[0];
+                    const text = await file.text();
+                    
+                    try {
+                        JSON.parse(text); // Validate JSON
+                        
+                        const res = await fetch('/brands/upload', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'X-Filename': file.name },
+                            body: text
+                        });
+                        
+                        if(res.ok) {
+                            alert('Uploaded successfully!');
+                            loadFiles();
+                        } else {
+                            alert('Upload failed');
+                        }
+                    } catch (e) {
+                        alert('Invalid JSON file');
+                    }
+                }
+
+                loadFiles();
+            </script>
+        </body>
+        </html>
+    `);
+});
+
+// Upload endpoint for the dashboard
+app.post('/brands/upload', express.text({ limit: '50mb' }), async (req, res) => {
+    try {
+        const content = req.body;
+        const inputFilename = req.get('X-Filename') || `upload_${Date.now()}.json`;
+        // Basic validation
+        JSON.parse(content);
+
+        const filepath = path.join(BRANDS_DIR, inputFilename);
+        await fs.writeFile(filepath, content);
+        console.log(`📥 Manually uploaded file: ${filepath}`);
+
+        res.json({ success: true, filename: inputFilename });
+    } catch (e) {
+        res.status(400).json({ error: 'Invalid JSON or upload failed' });
+    }
+});
+
+
 // ===================== START SERVER =====================
 app.listen(PORT, () => {
     console.log(`\n🚀 JS Scraper Service running on port ${PORT}`);

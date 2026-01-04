@@ -13,6 +13,11 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
     const [scraperSource, setScraperSource] = useState('railway'); // 'railway' or 'local'
     const [loading, setLoading] = useState(false);
 
+    // Railway Restore State
+    const [railwayFiles, setRailwayFiles] = useState([]);
+    const [importingRailway, setImportingRailway] = useState(null);
+    const [dashboardUrl, setDashboardUrl] = useState(null);
+
     // DB Management State
     const [allBrands, setAllBrands] = useState([]);
     const [importingId, setImportingId] = useState(null);
@@ -25,8 +30,46 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
     useEffect(() => {
         if (isOpen) {
             fetchBrands();
+            fetchRailwayFiles();
+            fetch(`${API_BASE}/api/scraper-config`)
+                .then(r => r.json())
+                .then(d => setDashboardUrl(d.dashboardUrl))
+                .catch(e => console.error('Config fetch failed', e));
         }
     }, [isOpen]);
+
+    const fetchRailwayFiles = async () => {
+        try {
+            const res = await fetch(`${API_BASE}/api/railway-brands`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.brands && Array.isArray(data.brands)) {
+                    setRailwayFiles(data.brands.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)));
+                }
+            }
+        } catch (err) {
+            console.error('Failed to fetch railway backups:', err);
+        }
+    };
+
+    const handleImportRailway = async (filename) => {
+        if (!confirm(`Recover "${filename}" from Cloud Backup?`)) return;
+        setImportingRailway(filename);
+        try {
+            const res = await fetch(`${API_BASE}/api/railway-brands/import/${filename}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                alert(`✅ Successfully restored "${data.brandName}" with ${data.count} products.`);
+                fetchBrands(); // Refresh local list
+            } else {
+                throw new Error(data.error || 'Unknown error');
+            }
+        } catch (e) {
+            alert(`Restore Failed: ${e.message}`);
+        } finally {
+            setImportingRailway(null);
+        }
+    };
 
     const fetchBrands = async () => {
         try {
@@ -231,6 +274,50 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
                     </button>
                 </div>
 
+
+
+                {/* Cloud Recovery */}
+                <div className={styles.sectionTitle} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>☁️ Cloud Backups (Railway)</span>
+                    {dashboardUrl && (
+                        <a href={dashboardUrl} target="_blank" rel="noopener noreferrer"
+                            style={{ fontSize: '12px', background: '#334155', color: 'white', padding: '4px 8px', borderRadius: '4px', textDecoration: 'none', border: '1px solid #475569' }}>
+                            🔗 Manage Volume
+                        </a>
+                    )}
+                </div>
+                <div className={styles.description}>
+                    Restore scraped data that is safely saved in the cloud (persistent volume).
+                </div>
+                <div className={`${styles.brandListContainer} ${styles.cloudList}`} style={{ marginBottom: '25px', maxHeight: '150px' }}>
+                    {railwayFiles.length === 0 ? (
+                        <div className={styles.emptyList}>No cloud backups found.</div>
+                    ) : (
+                        <div className={styles.brandList}>
+                            {railwayFiles.map(file => (
+                                <div key={file.filename} className={styles.brandItem} style={{ background: '#1e293b' }}>
+                                    <div className={styles.brandInfo}>
+                                        <div className={styles.brandNameText} style={{ color: '#93c5fd' }}>{file.name || file.filename}</div>
+                                        <div className={styles.brandStats} style={{ color: '#64748b' }}>
+                                            {file.productCount} Products • {new Date(file.completedAt).toLocaleDateString()}
+                                        </div>
+                                    </div>
+                                    <div className={styles.brandActions}>
+                                        <button
+                                            className={`${styles.actionBtn} ${styles.miniUploadBtn}`}
+                                            onClick={() => handleImportRailway(file.filename)}
+                                            disabled={importingRailway === file.filename}
+                                            style={{ background: '#3b82f6', color: 'white' }}
+                                            title="Import to Local DB"
+                                        >
+                                            {importingRailway === file.filename ? '⏳' : '📥 Recover'}
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
 
 
                 {/* DB Management */}
