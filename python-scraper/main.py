@@ -16,6 +16,7 @@ import logging
 import os
 import asyncio
 import uuid
+import json
 from datetime import datetime
 
 # Configure logging
@@ -103,6 +104,101 @@ def cancel_task(task_id: str):
     logger.info(f"Task {task_id} cancelled")
     return {"success": True, "message": "Task cancelled"}
 
+# Persistent storage setup
+DATA_DIR = os.getenv("DATA_DIR", "/app/data")
+BRANDS_DIR = os.path.join(DATA_DIR, "brands")
+
+# Ensure directories exist
+os.makedirs(BRANDS_DIR, exist_ok=True)
+logger.info(f"Persistent storage initialized at {DATA_DIR}")
+
+def save_brand_to_storage(brand_name: str, data: dict):
+    """Save completed task data to persistent storage"""
+    try:
+        safe_name = "".join(x for x in brand_name if x.isalnum() or x == "_").lower()
+        if not safe_name:
+            safe_name = "unknown_brand"
+            
+        filename = f"{safe_name}_{int(datetime.utcnow().timestamp())}.json"
+        filepath = os.path.join(BRANDS_DIR, filename)
+        
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            
+        logger.info(f"💾 Brand saved to persistent storage: {filepath}")
+        return filepath
+    except Exception as e:
+        logger.error(f"Failed to save brand to storage: {e}")
+        return None
+
+def load_saved_brands():
+    """Load list of all saved brands"""
+    try:
+        if not os.path.exists(BRANDS_DIR):
+            return []
+            
+        files = [f for f in os.listdir(BRANDS_DIR) if f.endswith('.json')]
+        brands = []
+        
+        for filename in files:
+            try:
+                filepath = os.path.join(BRANDS_DIR, filename)
+                with open(filepath, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    brands.append({
+                        "filename": filename,
+                        "name": data.get("brandInfo", {}).get("name") or data.get("brandName", "Unknown"),
+                        "productCount": data.get("productCount", 0),
+                        "completedAt": data.get("completedAt"),
+                        "logo": data.get("brandInfo", {}).get("logo", "")
+                    })
+            except Exception:
+                continue
+                
+        return brands
+    except Exception as e:
+        logger.error(f"Failed to load saved brands: {e}")
+        return []
+
+# ===================== PERSISTENT STORAGE ENDPOINTS =====================
+
+@app.get("/brands")
+def list_saved_brands():
+    """List all saved brands from persistent storage"""
+    brands = load_saved_brands()
+    return {
+        "success": True,
+        "count": len(brands),
+        "brands": brands
+    }
+
+@app.get("/brands/{filename}")
+def get_saved_brand(filename: str):
+    """Get content of a specific saved brand file"""
+    try:
+        filepath = os.path.join(BRANDS_DIR, filename)
+        if not os.path.exists(filepath):
+            raise HTTPException(status_code=404, detail="Brand file not found")
+            
+        with open(filepath, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/brands/{filename}")
+def delete_saved_brand(filename: str):
+    """Delete a saved brand file"""
+    try:
+        filepath = os.path.join(BRANDS_DIR, filename)
+        if os.path.exists(filepath):
+            os.remove(filepath)
+            return {"success": True, "message": "Brand deleted"}
+        raise HTTPException(status_code=404, detail="Brand file not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ===================== SCRAPING ENDPOINTS =====================
 
 def run_scrape_task(task_id: str, url: str, name: Optional[str], scraper_type: str = "universal"):
@@ -129,17 +225,26 @@ def run_scrape_task(task_id: str, url: str, name: Optional[str], scraper_type: s
         products = result.get("products", [])
         brand_info = result.get("brandInfo", {"name": name or "Unknown", "logo": ""})
         
-        tasks[task_id].update({
+        completed_data = {
+            "id": task_id,
             "status": "completed",
             "progress": 100,
             "stage": "Complete!",
             "products": products,
             "brandInfo": brand_info,
             "productCount": len(products),
-            "completedAt": datetime.utcnow().isoformat()
-        })
+            "completedAt": datetime.utcnow().isoformat(),
+            "sourceUrl": url
+        }
         
-        logger.info(f"Task {task_id} completed: {len(products)} products")
+        # Update in-memory task
+        tasks[task_id].update(completed_data)
+        
+        # PERSIST: Save to disk
+        brand_name_to_save = brand_info.get("name") or name or "Unknown"
+        save_brand_to_storage(brand_name_to_save, completed_data)
+        
+        logger.info(f"Task {task_id} completed: {len(products)} products (SAVED TO DISK)")
         
     except Exception as e:
         logger.error(f"Task {task_id} failed: {e}")

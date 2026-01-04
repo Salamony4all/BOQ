@@ -267,51 +267,142 @@ class StructureScraper {
         }, { baseUrl, productKeywords: this.productKeywords, categoryKeywords: this.categoryKeywords, excludeKeywords: this.excludeKeywords });
     }
 
-    async extractProductsFromPage(page, brandName, category, subCategory) {
-        return await page.evaluate(({ brandName, category, subCategory }) => {
-            const products = [];
-            const seen = new Set();
+    // ===================== INTELLIGENT EXTRACTION LOGIC (Ported from Universal Scraper) =====================
 
-            // Generic search for product containers
-            // Look for blocks that have an image and a title
-            const potentialContainers = document.querySelectorAll('div, li, article, section');
+    async analyzePage(page) {
+        // Common product container selectors
+        const productContainerSelectors = [
+            '.product', 'li.product', '.products .product',
+            '.product-item', '.product-card', '.product-box', '.product-tile',
+            '[class*="product-item"]', '[class*="product-card"]', '[class*="ProductCard"]',
+            '.grid-item', '.catalog-item', '.collection-item', '.shop-item',
+            '.card', '.item-card', '.furniture-item',
+            '[data-product]', '[data-item]'
+        ];
 
-            potentialContainers.forEach(el => {
-                // Heuristic: Must have at least one image and one link/heading
-                const img = el.querySelector('img');
-                const link = el.querySelector('a[href]');
-                const heading = el.querySelector('h1, h2, h3, h4, h5, .title, .name');
+        const titleSelectors = [
+            'h2', 'h3', 'h4',
+            '.product-title', '.product-name', '.item-title',
+            '[class*="product-title"]', '[class*="product-name"]',
+            '.title', '.name', 'a[title]'
+        ];
 
-                if (img && link && (heading || link.innerText.length > 5)) {
-                    // Check if it's "too large" (like a whole section)
-                    if (el.innerText.length > 2000) return;
+        return await page.evaluate(({ containerSelectors, titleSelectors }) => {
+            const results = [];
+            for (const selector of containerSelectors) {
+                try {
+                    const elements = document.querySelectorAll(selector);
+                    if (elements.length < 2) continue; // Need at least 2 to be a list
 
-                    const name = (heading ? heading.innerText : link.innerText).trim();
-                    if (!name || name.length < 3 || seen.has(name)) return;
+                    let score = 0;
+                    let hasTitle = 0;
+                    let hasImage = 0;
+                    let hasLink = 0;
 
-                    let imageUrl = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('srcset')?.split(' ')[0];
-                    if (!imageUrl) return;
-
-                    // Exclude common UI icons
-                    const lowerImg = imageUrl.toLowerCase();
-                    if (['logo', 'icon', 'arrow', 'chevron', 'dot', 'placeholder'].some(k => lowerImg.includes(k))) return;
-
-                    seen.add(name);
-                    products.push({
-                        mainCategory: category || 'General',
-                        subCategory: subCategory || 'General',
-                        family: brandName,
-                        model: name,
-                        description: name, // Default to name
-                        imageUrl: imageUrl,
-                        productUrl: link.href,
-                        price: 0
+                    elements.forEach(el => {
+                        const titleEl = el.querySelector(titleSelectors.join(','));
+                        if (titleEl && titleEl.innerText.trim().length > 3) hasTitle++;
+                        if (el.querySelector('img')) hasImage++;
+                        if (el.querySelector('a[href]')) hasLink++;
                     });
-                }
-            });
 
-            return products;
-        }, { brandName, category, subCategory });
+                    // Scoring
+                    score = (hasTitle / elements.length) * 30 +
+                        (hasImage / elements.length) * 40 +
+                        (hasLink / elements.length) * 30;
+
+                    if (score > 50) {
+                        results.push({
+                            selector,
+                            count: elements.length,
+                            score,
+                            hasTitle: hasTitle > 0,
+                            hasImage: hasImage > 0
+                        });
+                    }
+                } catch (e) { }
+            }
+            results.sort((a, b) => b.score - a.score);
+            return results.slice(0, 1); // Best match
+        }, { containerSelectors, titleSelectors });
+    }
+
+    async extractProducts(page, selector, brandName, category, subCategory) {
+        return await page.evaluate(({ selector, brandName, category, subCategory }) => {
+            const items = [];
+            const seen = new Set();
+            const containers = document.querySelectorAll(selector);
+
+            containers.forEach(el => {
+                // Extract Title
+                let title = '';
+                const titleEl = el.querySelector('h2, h3, h4, .title, .name, [class*="product-title"]');
+                if (titleEl) title = titleEl.innerText.trim();
+                if (!title) title = el.getAttribute('title') || '';
+
+                if (!title || title.length < 2 || seen.has(title)) return;
+
+                // Extract Image
+                let imageUrl = '';
+                const img = el.querySelector('img');
+                if (img) {
+                    imageUrl = img.getAttribute('src') || img.getAttribute('data-src') || img.getAttribute('data-lazy-src') || '';
+                    if (imageUrl && !imageUrl.startsWith('http')) {
+                        // Will fix in Node
+                    }
+                }
+                if (!imageUrl) return;
+
+                // Extract Link
+                const linkEl = el.querySelector('a[href]');
+                const productUrl = linkEl ? linkEl.href : '';
+
+                const lowerImg = imageUrl.toLowerCase();
+                const ignore = ['logo', 'icon', 'arrow', 'placeholder', 'blank', 'loading'];
+                if (ignore.some(k => lowerImg.includes(k))) return;
+
+                seen.add(title);
+                items.push({
+                    mainCategory: category || 'General',
+                    subCategory: subCategory || 'General',
+                    family: brandName,
+                    model: title,
+                    description: title,
+                    imageUrl,
+                    productUrl,
+                    price: 0
+                });
+            });
+            return items;
+        }, { selector, brandName, category, subCategory });
+    }
+
+    async extractProductsFromPage(page, brandName, category, subCategory) {
+        // Wrapper: Analyze then Extract
+        const analysis = await this.analyzePage(page);
+        if (analysis.length > 0) {
+            console.log(`      ⚡ Intelligent selector found: ${analysis[0].selector} (score: ${analysis[0].score.toFixed(0)})`);
+            return await this.extractProducts(page, analysis[0].selector, brandName, category, subCategory);
+        } else {
+            console.log('      ⚠️ No structure detected, using fallback extraction...');
+            // Minimal fallback for non-structured lists
+            return await page.evaluate(({ brandName, category, subCategory }) => {
+                const products = [];
+                // Very basic fallback looking for any article/div with img+link
+                const candidates = document.querySelectorAll('article, .item, .cell');
+                candidates.forEach(el => {
+                    const img = el.querySelector('img');
+                    const link = el.querySelector('a');
+                    if (img && link && link.innerText.length > 3) {
+                        products.push({
+                            mainCategory: category, subCategory, family: brandName,
+                            model: link.innerText.trim(), imageUrl: img.src, productUrl: link.href
+                        });
+                    }
+                });
+                return products;
+            }, { brandName, category, subCategory });
+        }
     }
 
     async findPagination(page, baseUrl) {

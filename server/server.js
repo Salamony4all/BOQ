@@ -582,6 +582,32 @@ app.delete('/api/tasks/:id', (req, res) => {
   res.status(404).json({ error: 'Task not found' });
 });
 
+// --- Proxy Endpoints for Persistent Storage (Sidecar) ---
+app.get('/api/brands', async (req, res) => {
+  if (!JS_SCRAPER_SERVICE_URL) {
+    console.warn('⚠️ JS_SCRAPER_SERVICE_URL not configured, cannot list saved brands');
+    return res.json({ brands: [] });
+  }
+  try {
+    const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/brands`, { timeout: 5000 });
+    res.json(response.data);
+  } catch (error) {
+    console.warn('Failed to fetch brands from sidecar:', error.message);
+    res.json({ brands: [] });
+  }
+});
+
+app.get('/api/brands/:filename', async (req, res) => {
+  if (!JS_SCRAPER_SERVICE_URL) return res.status(404).json({ error: 'Sidecar not configured' });
+  try {
+    const response = await axios.get(`${JS_SCRAPER_SERVICE_URL}/brands/${req.params.filename}`, { timeout: 10000 });
+    res.json(response.data);
+  } catch (error) {
+    // console.warn('Failed to fetch specific brand:', error.message);
+    res.status(404).json({ error: 'Brand not found on sidecar' });
+  }
+});
+
 
 // --- Scraping Endpoint ---
 app.post('/api/scrape-brand', async (req, res) => {
