@@ -100,6 +100,13 @@ class StructureScraper {
                     // Try to handle "enter site" or language selection screens
                     await this.handleInterstitials(page);
 
+                    const title = await page.title();
+                    console.log(`   🌍 Page Title: ${title}`);
+                    if (title.includes('Just a moment') || title.includes('Attention Required')) {
+                        console.error('   🛑 BLOCKED BY CLOUDFLARE/BOT DETECTION');
+                        throw new Error('Bot Detection Triggered');
+                    }
+
                     // ⚡ IMPROVED: Extract Brand Info using Playwright (Real Browser)
                     // This fixes issues where Axios misses og:image or dynamic content
                     if (!brandInfo.logo || brandInfo.logo.includes('placeholder')) {
@@ -108,9 +115,21 @@ class StructureScraper {
                             const pageLogo = await page.evaluate(() => {
                                 // 1. Check og:image (Best for Architonic)
                                 const og = document.querySelector('meta[property="og:image"]');
-                                if (og && og.content && og.content.includes('logo')) return og.content;
+                                // ... extraction logic ...
+                                const h1 = document.querySelector('h1')?.innerText;
+                                return {
+                                    og: og ? og.content : null,
+                                    logoSelectors: !!document.querySelector('.nt-brand-header__logo img'),
+                                    h1
+                                };
+                            });
 
-                                // 2. Architonic Selectors
+                            console.log('     Page Analysis:', JSON.stringify(pageLogo));
+
+                            const actualLogo = await page.evaluate(() => {
+                                const og = document.querySelector('meta[property="og:image"]');
+                                if (og && og.content && og.content.includes('logo')) return og.content;
+                                // ... existing selector logic ...
                                 const selectors = [
                                     '.nt-brand-header__logo img',
                                     '.brand-logo img',
@@ -124,8 +143,8 @@ class StructureScraper {
                                 return null;
                             });
 
-                            if (pageLogo) {
-                                let refinedLogo = pageLogo;
+                            if (actualLogo) {
+                                let refinedLogo = actualLogo;
                                 // Cleanup
                                 if (refinedLogo.startsWith('//')) refinedLogo = 'https:' + refinedLogo;
                                 // Architonic cleanup
