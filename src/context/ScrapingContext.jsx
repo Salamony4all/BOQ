@@ -13,7 +13,11 @@ export function ScrapingProvider({ children }) {
         stage: '',
         taskId: null,
         onComplete: null,
-        onError: null
+        onError: null,
+        // New: connection status tracking
+        isConnected: true,
+        consecutiveErrors: 0,
+        lastSuccessfulPoll: null
     });
 
     const [successData, setSuccessData] = useState(null);
@@ -28,31 +32,40 @@ export function ScrapingProvider({ children }) {
         };
     }, []);
 
-    // Start scraping and begin polling - THIS PERSISTS AFTER MODAL CLOSES
-    const startScrapingWithTask = useCallback((brandName, taskId, onComplete, onError) => {
-        setSuccessData(null);
-
+    // Core polling function - can be called to restart polling
+    const startPolling = useCallback((taskId, brandName, onComplete, onError) => {
         // Clear any existing polling
         if (pollingRef.current) {
             clearInterval(pollingRef.current);
         }
 
-        setScrapingState({
-            isActive: true,
-            brandName,
-            progress: 5,
-            stage: 'Connecting to server...',
-            taskId,
-            onComplete,
-            onError
-        });
+        // Reset connection status
+        setScrapingState(prev => ({
+            ...prev,
+            isConnected: true,
+            consecutiveErrors: 0
+        }));
 
-        // Start polling for task status - runs in context, not component
+        // Start polling for task status
         pollingRef.current = setInterval(async () => {
             try {
-                const res = await fetch(`${API_BASE}/api/tasks/${taskId}`);
-                if (!res.ok) return;
+                const res = await fetch(`${API_BASE}/api/tasks/${taskId}`, {
+                    signal: AbortSignal.timeout(10000) // 10s timeout
+                });
+
+                if (!res.ok) {
+                    throw new Error(`HTTP ${res.status}`);
+                }
+
                 const task = await res.json();
+
+                // Successfully got response - reset error counter
+                setScrapingState(prev => ({
+                    ...prev,
+                    isConnected: true,
+                    consecutiveErrors: 0,
+                    lastSuccessfulPoll: Date.now()
+                }));
 
                 if (task.status === 'completed') {
                     clearInterval(pollingRef.current);
@@ -96,10 +109,67 @@ export function ScrapingProvider({ children }) {
                     }));
                 }
             } catch (e) {
-                console.error('Background polling error:', e);
+                console.error('Polling error:', e.message);
+
+                // Track consecutive errors
+                setScrapingState(prev => {
+                    const newErrorCount = prev.consecutiveErrors + 1;
+                    const isDisconnected = newErrorCount >= 3;
+
+                    return {
+                        ...prev,
+                        consecutiveErrors: newErrorCount,
+                        isConnected: !isDisconnected,
+                        stage: isDisconnected
+                            ? '⚠️ Connection lost - Click refresh to reconnect'
+                            : prev.stage
+                    };
+                });
             }
         }, 2000);
     }, []);
+
+    // Refresh/Reconnect function - manually restarts polling
+    const refreshConnection = useCallback(() => {
+        if (scrapingState.taskId && scrapingState.isActive) {
+            console.log('🔄 Manually refreshing connection for task:', scrapingState.taskId);
+
+            setScrapingState(prev => ({
+                ...prev,
+                stage: 'Reconnecting...',
+                consecutiveErrors: 0,
+                isConnected: true
+            }));
+
+            startPolling(
+                scrapingState.taskId,
+                scrapingState.brandName,
+                scrapingState.onComplete,
+                scrapingState.onError
+            );
+        }
+    }, [scrapingState.taskId, scrapingState.brandName, scrapingState.onComplete, scrapingState.onError, scrapingState.isActive, startPolling]);
+
+    // Start scraping and begin polling - THIS PERSISTS AFTER MODAL CLOSES
+    const startScrapingWithTask = useCallback((brandName, taskId, onComplete, onError) => {
+        setSuccessData(null);
+
+        setScrapingState({
+            isActive: true,
+            brandName,
+            progress: 5,
+            stage: 'Connecting to server...',
+            taskId,
+            onComplete,
+            onError,
+            isConnected: true,
+            consecutiveErrors: 0,
+            lastSuccessfulPoll: Date.now()
+        });
+
+        // Start polling
+        startPolling(taskId, brandName, onComplete, onError);
+    }, [startPolling]);
 
     // Legacy startScraping for backward compatibility (will be replaced soon)
     const startScraping = (brandName, onComplete, onError, taskId = null) => {
@@ -111,7 +181,10 @@ export function ScrapingProvider({ children }) {
             stage: 'Connecting to Website...',
             taskId: taskId,
             onComplete,
-            onError
+            onError,
+            isConnected: true,
+            consecutiveErrors: 0,
+            lastSuccessfulPoll: Date.now()
         });
     };
 
@@ -148,7 +221,10 @@ export function ScrapingProvider({ children }) {
             stage: '',
             taskId: null,
             onComplete: null,
-            onError: null
+            onError: null,
+            isConnected: true,
+            consecutiveErrors: 0,
+            lastSuccessfulPoll: null
         });
     };
 
@@ -177,7 +253,10 @@ export function ScrapingProvider({ children }) {
             stage: '',
             taskId: null,
             onComplete: null,
-            onError: null
+            onError: null,
+            isConnected: true,
+            consecutiveErrors: 0,
+            lastSuccessfulPoll: null
         });
     };
 
@@ -194,7 +273,10 @@ export function ScrapingProvider({ children }) {
             stage: '',
             taskId: null,
             onComplete: null,
-            onError: null
+            onError: null,
+            isConnected: true,
+            consecutiveErrors: 0,
+            lastSuccessfulPoll: null
         });
     };
 
@@ -206,26 +288,41 @@ export function ScrapingProvider({ children }) {
             updateProgress,
             completeScraping,
             failScraping,
-            cancelCurrentScrape
+            cancelCurrentScrape,
+            refreshConnection
         }}>
             {children}
             {/* Global Floating Progress Bar - Always visible during scraping */}
-            <div className={`${styles.scrapingContainer} ${scrapingState.isActive ? styles.active : ''} ${successData ? styles.success : ''}`}>
+            <div className={`${styles.scrapingContainer} ${scrapingState.isActive ? styles.active : ''} ${successData ? styles.success : ''} ${!scrapingState.isConnected ? styles.disconnected : ''}`}>
                 {scrapingState.isActive && !successData && (
                     <div className={styles.minimizedBarContent}>
-                        <div className={styles.throbber}></div>
+                        <div className={`${styles.throbber} ${!scrapingState.isConnected ? styles.paused : ''}`}></div>
                         <div className={styles.progressInfo}>
                             <span className={styles.minimizedText}>
+                                {!scrapingState.isConnected && '⚠️ '}
                                 Scraping {scrapingState.brandName}... {scrapingState.progress}%
                             </span>
-                            <span className={styles.minimizedStage}>{scrapingState.stage}</span>
+                            <span className={`${styles.minimizedStage} ${!scrapingState.isConnected ? styles.errorStage : ''}`}>
+                                {scrapingState.stage}
+                            </span>
                         </div>
                         <div className={styles.minimizedProgress}>
                             <div
-                                className={styles.minimizedProgressFill}
+                                className={`${styles.minimizedProgressFill} ${!scrapingState.isConnected ? styles.disconnectedFill : ''}`}
                                 style={{ width: `${scrapingState.progress}%` }}
                             />
                         </div>
+                        {/* Refresh Button - Always visible, highlighted when disconnected */}
+                        <button
+                            className={`${styles.refreshBtn} ${!scrapingState.isConnected ? styles.refreshBtnActive : ''}`}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                refreshConnection();
+                            }}
+                            title="Refresh connection"
+                        >
+                            🔄
+                        </button>
                         <button
                             className={styles.cancelScrapeBtn}
                             onClick={(e) => {
@@ -265,3 +362,4 @@ export function useScraping() {
     }
     return context;
 }
+
