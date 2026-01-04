@@ -615,6 +615,17 @@ app.get('/api/railway-brands/:filename', async (req, res) => {
   }
 });
 
+app.delete('/api/railway-brands/:filename', async (req, res) => {
+  if (!JS_SCRAPER_SERVICE_URL) return res.status(404).json({ error: 'Sidecar not configured' });
+  try {
+    await axios.delete(`${JS_SCRAPER_SERVICE_URL}/brands/${req.params.filename}`);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete from sidecar:', error.message);
+    res.status(500).json({ error: 'Failed to delete from sidecar' });
+  }
+});
+
 // Import endpoint: Restore a brand from Railway Backup to Local DB
 app.post('/api/railway-brands/import/:filename', async (req, res) => {
   try {

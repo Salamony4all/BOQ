@@ -1795,6 +1795,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                                     src={getFullUrl(row.brandLogo)}
                                                     alt=""
                                                     className={styles.badgeLogo}
+                                                    style={{ objectFit: 'contain', background: 'white', borderRadius: '2px' }}
                                                     onError={(e) => { e.target.style.display = 'none'; }}
                                                 />
                                             </div>
@@ -1854,6 +1855,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                                                 src={getFullUrl(row.brandLogo)}
                                                                 alt=""
                                                                 className={styles.triggerLogo}
+                                                                style={{ objectFit: 'contain', background: 'white', padding: '1px', borderRadius: '2px' }}
                                                                 onError={(e) => {
                                                                     e.target.style.display = 'none';
                                                                     // Show initial instead
@@ -1877,7 +1879,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                             {/* Dropdown Panel */}
                                             {openBrandDropdown === index && (
                                                 <div className={styles.brandDropdownPanel}>
-                                                    {brands.map(b => (
+                                                    {Array.from(new Map(brands.map(b => [b.name, b])).values()).map(b => (
                                                         <button
                                                             key={b.id}
                                                             className={`${styles.brandOption} ${row.selectedBrand === b.name ? styles.brandOptionActive : ''}`}
@@ -1891,6 +1893,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                                                     src={getFullUrl(b.logo)}
                                                                     alt=""
                                                                     className={styles.optionLogo}
+                                                                    style={{ objectFit: 'contain', background: 'white', padding: '1px', borderRadius: '2px' }}
                                                                     onError={(e) => {
                                                                         // Replace with initial on error
                                                                         const span = document.createElement('span');
@@ -2076,6 +2079,7 @@ export default function MultiBudgetModal({ isOpen, onClose, originalTables }) {
                                     src={getFullUrl(previewLogo)}
                                     alt="brand logo"
                                     className={styles.previewBadgeLogo}
+                                    style={{ objectFit: 'contain', background: 'white', padding: '4px', borderRadius: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}
                                     onError={(e) => { e.target.parentNode.style.display = 'none'; }}
                                 />
                             </div>

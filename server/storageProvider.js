@@ -71,7 +71,7 @@ export const brandStorage = {
         localBrands.forEach(b => brandMap.set(String(b.id), b));
 
         // 2. Load Blob Brands (Persistent Storage Layer for Vercel without KV)
-        if (isVercel && !kv && process.env.BLOB_READ_WRITE_TOKEN) {
+        if (!kv && process.env.BLOB_READ_WRITE_TOKEN) {
             try {
                 const { blobs } = await list({ prefix: 'brands-db/' });
                 // Parallel fetch of all brand files
@@ -129,7 +129,7 @@ export const brandStorage = {
         }
 
         // Blob Storage Strategy (Persistent)
-        if (isVercel && process.env.BLOB_READ_WRITE_TOKEN) {
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
                 console.log('[Storage] Saving to Blob DB...');
                 // Save as JSON file in 'brands-db/' folder
@@ -171,7 +171,7 @@ export const brandStorage = {
         }
 
         // Blob Delete
-        if (isVercel && process.env.BLOB_READ_WRITE_TOKEN) {
+        if (process.env.BLOB_READ_WRITE_TOKEN) {
             try {
                 const filename = `brands-db/${brandId}.json`;
                 const { blobs } = await list({ prefix: 'brands-db/' });

@@ -53,19 +53,25 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
     };
 
     const handleImportRailway = async (filename) => {
-        if (!confirm(`Recover "${filename}" from Cloud Backup?`)) return;
+        if (!confirm(`Recover "${filename}" into local storage? (This will move it from the cloud)`)) return;
         setImportingRailway(filename);
         try {
+            // 1. Import
             const res = await fetch(`${API_BASE}/api/railway-brands/import/${filename}`, { method: 'POST' });
             const data = await res.json();
+
             if (data.success) {
-                alert(`✅ Successfully restored "${data.brandName}" with ${data.count} products.`);
-                fetchBrands(); // Refresh local list
+                // 2. Delete from Railway (Move operation)
+                await fetch(`${API_BASE}/api/railway-brands/${filename}`, { method: 'DELETE' });
+
+                alert(`✅ Moved "${data.brandName}" to local storage!`);
+                fetchBrands();
+                setRailwayFiles(prev => prev.filter(f => f.filename !== filename));
             } else {
                 throw new Error(data.error || 'Unknown error');
             }
         } catch (e) {
-            alert(`Restore Failed: ${e.message}`);
+            alert(`Recovery Failed: ${e.message}`);
         } finally {
             setImportingRailway(null);
         }
@@ -258,7 +264,7 @@ export default function AddBrandModal({ isOpen, onClose, onBrandAdded, onBrandUp
                                 className={styles.select}
                                 value={scraperSource}
                                 onChange={e => setScraperSource(e.target.value)}
-                                style={{ border: '1px solid #3b82f6', background: '#eff6ff' }}
+                                style={{ border: '1px solid #3b82f6', background: '#eff6ff', color: '#1e293b' }}
                             >
                                 <option value="railway">🚂 Railway Service (Recommended - Stable)</option>
                                 <option value="local">🏠 Local Server (Testing/Debug)</option>
