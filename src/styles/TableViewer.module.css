@@ -160,15 +160,86 @@
     }
 }
 
-@media (max-width: 768px) {
-    .tableHeader {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.5rem;
+/* Tablet Responsive */
+@media (max-width: 1024px) {
+    .title {
+        font-size: 1.75rem;
+    }
+
+    .tableCard {
+        padding: 1.25rem;
     }
 
     .table {
+        font-size: 0.85rem;
+    }
+
+    .cell {
+        padding: 0.875rem 0.75rem;
+    }
+
+    .image {
+        max-width: 100px;
+        max-height: 100px;
+    }
+
+    .summarySection {
+        max-width: 350px;
+    }
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .viewerContainer {
+        margin-top: 2rem;
+    }
+
+    .header {
+        margin-bottom: 1.5rem;
+    }
+
+    .title {
+        font-size: 1.5rem;
+    }
+
+    .tableCard {
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+        border-radius: 12px;
+    }
+
+    .tableHeader {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .sheetName {
+        font-size: 1.1rem;
+    }
+
+    .rowCount {
         font-size: 0.8rem;
+        padding: 0.4rem 0.75rem;
+    }
+
+    .tableWrapper {
+        /* Enable horizontal scroll on mobile */
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: 8px;
+    }
+
+    .table {
+        font-size: 0.75rem;
+        /* Prevent table from shrinking too much */
+        min-width: 600px;
+    }
+
+    .headerRow th {
+        font-size: 0.7rem;
+        padding: 0.75rem 0.5rem;
     }
 
     .cell {
@@ -176,8 +247,109 @@
     }
 
     .image {
-        max-width: 80px;
-        max-height: 80px;
+        max-width: 60px;
+        max-height: 60px;
+    }
+
+    .image:hover {
+        /* More pronounced zoom on mobile tap */
+        transform: scale(2);
+    }
+
+    .noData {
+        padding: 2rem 1rem;
+        font-size: 1rem;
+    }
+
+    /* Action buttons - larger touch targets */
+    .actionBtn {
+        width: 32px;
+        height: 32px;
+        font-size: 16px;
+    }
+
+    .summarySection {
+        max-width: 100%;
+        margin-left: 0;
+        margin-top: 1rem;
+        padding: 1rem;
+    }
+
+    .summaryDetailRow {
+        font-size: 0.85rem;
+    }
+
+    .summaryTotal {
+        font-size: 1.1rem;
+    }
+
+    /* Modal adjustments for mobile */
+    .modalContent {
+        max-width: 95vw;
+        max-height: 85vh;
+    }
+
+    .closeButton {
+        /* Move close button to be more accessible on mobile */
+        top: -35px;
+        right: -35px;
+        width: 36px;
+        height: 36px;
+        font-size: 20px;
+    }
+
+    .innerCloseButton {
+        width: 36px;
+        height: 36px;
+        font-size: 20px;
+        top: 8px;
+        right: 8px;
+    }
+}
+
+/* Extra Small Devices */
+@media (max-width: 480px) {
+    .title {
+        font-size: 1.25rem;
+    }
+
+    .tableCard {
+        padding: 0.75rem;
+    }
+
+    .sheetName {
+        font-size: 1rem;
+    }
+
+    .table {
+        font-size: 0.7rem;
+        min-width: 500px;
+    }
+
+    .headerRow th {
+        font-size: 0.65rem;
+        padding: 0.6rem 0.4rem;
+    }
+
+    .cell {
+        padding: 0.6rem 0.4rem;
+    }
+
+    .image {
+        max-width: 50px;
+        max-height: 50px;
+    }
+
+    .summarySection {
+        padding: 0.875rem;
+    }
+
+    .summaryDetailRow {
+        font-size: 0.8rem;
+    }
+
+    .summaryTotal {
+        font-size: 1rem;
     }
 }
 

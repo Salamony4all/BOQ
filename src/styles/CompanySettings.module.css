@@ -326,10 +326,93 @@
     }
 }
 
-/* Responsive */
+/* Tablet Responsive */
+@media (max-width: 768px) {
+
+    .modalContent,
+    .settingsContainer {
+        padding: 1.75rem;
+    }
+
+    .title {
+        font-size: 1.6rem;
+    }
+
+    .subtitle {
+        font-size: 0.9rem;
+    }
+
+    .logoSection {
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .logoPreview {
+        width: 100px;
+        height: 100px;
+    }
+
+    .logoControls {
+        width: 100%;
+        align-items: stretch;
+    }
+
+    .uploadBtn {
+        padding: 0.7rem 1.3rem;
+        font-size: 0.9rem;
+    }
+
+    .actions {
+        gap: 0.75rem;
+    }
+
+    .saveBtn,
+    .skipBtn,
+    .resetBtn {
+        padding: 0.7rem 1.25rem;
+        font-size: 0.9rem;
+    }
+}
+
+/* Mobile Responsive */
 @media (max-width: 500px) {
-    .modalContent {
+    .modalOverlay {
+        padding: 0.5rem;
+    }
+
+    .modalContent,
+    .settingsContainer {
         padding: 1.5rem;
+        max-width: 100%;
+    }
+
+    .settingsPage {
+        padding: 1rem;
+    }
+
+    .title {
+        font-size: 1.4rem;
+    }
+
+    .subtitle {
+        font-size: 0.85rem;
+    }
+
+    .form {
+        gap: 1.25rem;
+    }
+
+    .label {
+        font-size: 0.85rem;
+    }
+
+    .hint {
+        font-size: 0.7rem;
+    }
+
+    .input {
+        padding: 0.75rem 0.875rem;
+        font-size: 0.95rem;
     }
 
     .logoSection {
@@ -343,16 +426,64 @@
     }
 
     .logoControls {
-        align-items: center;
+        width: 100%;
+        align-items: stretch;
+    }
+
+    .uploadBtn {
+        padding: 0.65rem 1rem;
+        font-size: 0.85rem;
+        min-height: 44px;
+        /* Touch-friendly */
+    }
+
+    .removeBtn {
+        padding: 0.6rem 0.875rem;
+        font-size: 0.75rem;
+        min-height: 44px;
+    }
+
+    .errorMessage,
+    .successMessage {
+        padding: 0.75rem 0.875rem;
+        font-size: 0.8rem;
     }
 
     .actions {
         flex-direction: column;
+        gap: 0.5rem;
+        margin-top: 1.5rem;
     }
 
     .saveBtn,
     .skipBtn,
     .resetBtn {
         width: 100%;
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+        min-height: 48px;
+        /* Touch-friendly */
+    }
+}
+
+/* Extra Small Devices */
+@media (max-width: 375px) {
+
+    .modalContent,
+    .settingsContainer {
+        padding: 1.25rem;
+    }
+
+    .title {
+        font-size: 1.25rem;
+    }
+
+    .logoPreview {
+        width: 100px;
+        height: 100px;
+    }
+
+    .input {
+        font-size: 0.9rem;
     }
 }

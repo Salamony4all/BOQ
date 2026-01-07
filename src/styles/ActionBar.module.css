@@ -258,3 +258,174 @@
     box-shadow: 0 6px 20px rgba(139, 92, 246, 0.5);
     background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%);
 }
+
+/* Tablet Responsive */
+@media (max-width: 1024px) {
+    .actionBar {
+        gap: 1.25rem;
+    }
+
+    .buttonGroup {
+        gap: 0.875rem;
+    }
+
+    .actionBtn {
+        padding: 0.75rem 1.25rem;
+        font-size: 0.9rem;
+    }
+
+    .costingModal {
+        width: 450px;
+        padding: 1.75rem;
+    }
+
+    .btnCostingTrigger,
+    .btnMultiBudget {
+        font-size: 1rem;
+        padding: 0.9rem 2.5rem;
+    }
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+    .actionBar {
+        margin-top: 1.25rem;
+        padding: 0.75rem;
+        gap: 1rem;
+    }
+
+    .actionTitle {
+        font-size: 0.9rem;
+        margin-bottom: 0.4rem;
+    }
+
+    .buttonGroup {
+        gap: 0.75rem;
+        width: 100%;
+    }
+
+    /* Make buttons stack on very small screens */
+    .actionBtn {
+        padding: 0.75rem 1rem;
+        font-size: 0.875rem;
+        flex: 1;
+        min-width: 120px;
+        min-height: 44px;
+        /* Touch-friendly */
+    }
+
+    /* Larger special buttons on mobile */
+    .btnCostingTrigger {
+        font-size: 1rem;
+        padding: 0.9rem 2rem;
+        margin: 1.5rem 0;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    .btnMultiBudget {
+        font-size: 1rem;
+        padding: 0.9rem 2rem;
+        margin: 1.5rem 0;
+        width: 100%;
+        max-width: 100%;
+    }
+
+    /* Modal Optimizations */
+    .costingModal {
+        width: 95vw;
+        max-width: 95vw;
+        padding: 1.5rem;
+        max-height: 85vh;
+    }
+
+    .modalHeader {
+        margin-bottom: 1.25rem;
+        padding-bottom: 0.875rem;
+    }
+
+    .modalTitle {
+        font-size: 1.2rem;
+    }
+
+    .closeBtn {
+        font-size: 1.3rem;
+        width: 32px;
+        height: 32px;
+    }
+
+    .sectionTitle {
+        font-size: 0.8rem;
+        margin-top: 1.25rem;
+        margin-bottom: 0.875rem;
+    }
+
+    .controlGroup {
+        margin-bottom: 1rem;
+    }
+
+    .labelRow {
+        font-size: 0.9rem;
+    }
+
+    /* Currency row - stack on mobile */
+    .currencyRow {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .select,
+    .input {
+        padding: 0.75rem;
+        font-size: 0.95rem;
+    }
+
+    .slider {
+        height: 8px;
+        /* Larger for touch */
+    }
+
+    .slider::-webkit-slider-thumb {
+        width: 22px;
+        height: 22px;
+    }
+
+    .applyBtn {
+        padding: 0.9rem;
+        font-size: 1rem;
+        margin-top: 1.5rem;
+        min-height: 48px;
+        /* Touch-friendly */
+    }
+}
+
+/* Extra Small Devices */
+@media (max-width: 480px) {
+    .actionBtn {
+        padding: 0.65rem 0.875rem;
+        font-size: 0.8rem;
+        min-width: 100px;
+    }
+
+    .btnCostingTrigger,
+    .btnMultiBudget {
+        font-size: 0.95rem;
+        padding: 0.85rem 1.5rem;
+    }
+
+    .costingModal {
+        padding: 1.25rem;
+    }
+
+    .modalTitle {
+        font-size: 1.1rem;
+    }
+
+    .sectionTitle {
+        font-size: 0.75rem;
+    }
+
+    .applyBtn {
+        font-size: 0.95rem;
+    }
+}

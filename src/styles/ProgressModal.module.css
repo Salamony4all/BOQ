@@ -104,22 +104,84 @@
     margin-top: 1rem;
 }
 
+/* Tablet Responsive */
 @media (max-width: 768px) {
     .modalContent {
-        min-width: 320px;
-        padding: 2rem;
+        min-width: 360px;
+        max-width: 90vw;
+        padding: 2.5rem 3rem;
+    }
+
+    .spinner {
+        width: 70px;
+        height: 70px;
+    }
+
+    .stage {
+        font-size: 1.35rem;
+    }
+
+    .percentage {
+        font-size: 2.25rem;
+    }
+
+    .progressBar {
+        height: 10px;
+    }
+}
+
+/* Mobile Responsive */
+@media (max-width: 500px) {
+    .modalContent {
+        min-width: 280px;
+        max-width: 95vw;
+        padding: 2rem 1.5rem;
+        border-radius: 20px;
+    }
+
+    .throbber {
+        margin-bottom: 1.5rem;
     }
 
     .spinner {
         width: 60px;
         height: 60px;
+        border-width: 3px;
     }
 
     .stage {
-        font-size: 1.25rem;
+        font-size: 1.15rem;
+        margin-bottom: 1.25rem;
+    }
+
+    .progressBar {
+        height: 10px;
+        margin-bottom: 0.875rem;
     }
 
     .percentage {
         font-size: 2rem;
+        margin-top: 0.875rem;
+    }
+}
+
+/* Extra Small Devices */
+@media (max-width: 375px) {
+    .modalContent {
+        min-width: 260px;
+        padding: 1.75rem 1.25rem;
+    }
+
+    .spinner {
+        width: 50px;
+        height: 50px;
+    }
+
+    .stage {
+        font-size: 1rem;
+    }
+
+    .percentage {
+        font-size: 1.75rem;
     }
 }
