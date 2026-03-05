@@ -1190,43 +1190,62 @@ function TableViewer({ data }) {
                 contentY += 10;
 
                 // ── IMAGES ──
-                const imageCell = row.cells.find(c => c.images?.length > 0 || c.image);
-                const allImages = imageCell?.images || (imageCell?.image ? [imageCell.image] : []);
                 const imageResults = [];
-                for (const img of allImages.slice(0, 4)) {
-                    if (img?.url) {
-                        try {
-                            const ir = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
-                            if (ir) imageResults.push(ir);
-                        } catch (e) { }
+                for (let idx = 0; idx < row.cells.length; idx++) {
+                    const c = row.cells[idx];
+                    const colName = header[idx] || '';
+                    if (c.images?.length > 0 || c.image) {
+                        const imgs = c.images || [c.image];
+                        for (const img of imgs) {
+                            if (img?.url) {
+                                try {
+                                    const ir = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
+                                    if (ir) {
+                                        ir.title = colName;
+                                        imageResults.push(ir);
+                                    }
+                                } catch (e) { }
+                            }
+                        }
                     }
                 }
 
                 if (imageResults.length > 0) {
+                    const maxImgs = 6;
+                    const imgsToDraw = imageResults.slice(0, maxImgs);
                     const imgAreaW = pageWidth - 16;
-                    const imgAreaH = imageResults.length <= 2 ? 40 : 64;
+                    const imgAreaH = 55;
+
                     doc.setFillColor(252, 252, 252);
                     doc.setDrawColor(...colors.border);
                     doc.roundedRect(8, contentY, imgAreaW, imgAreaH, 2, 2, 'FD');
 
-                    if (imageResults.length === 1) {
-                        const img = imageResults[0];
-                        const fit = calcFitSize(img.width, img.height, 80, 36);
-                        const ix = (pageWidth - fit.w) / 2;
-                        doc.addImage(img.dataUrl, 'JPEG', ix, contentY + 2, fit.w, fit.h, '', 'FAST');
-                    } else {
-                        const cols = 2;
-                        const cW = (imgAreaW - 12) / cols;
-                        const rows2 = Math.ceil(imageResults.length / cols);
-                        const cH = (imgAreaH - 8) / rows2;
-                        imageResults.slice(0, 4).forEach((img, idx) => {
-                            const c = idx % cols, r = Math.floor(idx / cols);
-                            const fit = calcFitSize(img.width, img.height, cW - 4, cH - 4);
-                            const x = 8 + 4 + c * (cW + 4) + (cW - 4 - fit.w) / 2;
-                            const y = contentY + 2 + r * (cH + 2) + (cH - 4 - fit.h) / 2;
-                            doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, '', 'FAST');
-                        });
-                    }
+                    const cols = imgsToDraw.length <= 2 ? imgsToDraw.length : (imgsToDraw.length <= 4 ? 2 : 3);
+                    const rows2 = Math.ceil(imgsToDraw.length / cols);
+
+                    const cW = (imgAreaW - (cols + 1) * 3) / cols;
+                    const cH = (imgAreaH - (rows2 + 1) * 3) / rows2;
+
+                    imgsToDraw.forEach((img, idx) => {
+                        const c = idx % cols, r = Math.floor(idx / cols);
+                        const titleH = 4.5;
+                        const fit = calcFitSize(img.width, img.height, cW - 2, cH - titleH - 1);
+
+                        const cellX = 8 + 3 + c * (cW + 3);
+                        const cellY = contentY + 3 + r * (cH + 3);
+
+                        const imgX = cellX + (cW - fit.w) / 2;
+                        const imgY = cellY + titleH;
+
+                        doc.setFontSize(6.5);
+                        doc.setTextColor(80, 80, 80);
+                        doc.setFont('helvetica', 'bold');
+                        const titleText = doc.splitTextToSize(processText(String(img.title || '').toUpperCase()), cW - 2);
+                        doc.text(titleText[0], cellX + cW / 2, cellY + 2.5, { align: 'center' });
+
+                        doc.addImage(img.dataUrl, 'JPEG', imgX, imgY, fit.w, fit.h, '', 'FAST');
+                    });
+
                     contentY += imgAreaH + 4;
                 }
 
@@ -1476,43 +1495,62 @@ function TableViewer({ data }) {
                 contentY += 10;
 
                 // ── IMAGES ──
-                const imageCell = row.cells.find(c => c.images?.length > 0 || c.image);
-                const allImages = imageCell?.images || (imageCell?.image ? [imageCell.image] : []);
                 const imageResults = [];
-                for (const img of allImages.slice(0, 4)) {
-                    if (img?.url) {
-                        try {
-                            const ir = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
-                            if (ir) imageResults.push(ir);
-                        } catch (e) { }
+                for (let idx = 0; idx < row.cells.length; idx++) {
+                    const c = row.cells[idx];
+                    const colName = header[idx] || '';
+                    if (c.images?.length > 0 || c.image) {
+                        const imgs = c.images || [c.image];
+                        for (const img of imgs) {
+                            if (img?.url) {
+                                try {
+                                    const ir = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
+                                    if (ir) {
+                                        ir.title = colName;
+                                        imageResults.push(ir);
+                                    }
+                                } catch (e) { }
+                            }
+                        }
                     }
                 }
 
                 if (imageResults.length > 0) {
+                    const maxImgs = 6;
+                    const imgsToDraw = imageResults.slice(0, maxImgs);
                     const imgAreaW = pageWidth - 16;
-                    const imgAreaH = imageResults.length <= 2 ? 40 : 64;
+                    const imgAreaH = 55;
+
                     doc.setFillColor(252, 252, 252);
                     doc.setDrawColor(...colors.border);
                     doc.roundedRect(8, contentY, imgAreaW, imgAreaH, 2, 2, 'FD');
 
-                    if (imageResults.length === 1) {
-                        const img = imageResults[0];
-                        const fit = calcFitSize(img.width, img.height, 80, 36);
-                        const ix = (pageWidth - fit.w) / 2;
-                        doc.addImage(img.dataUrl, 'JPEG', ix, contentY + 2, fit.w, fit.h, '', 'FAST');
-                    } else {
-                        const cols = 2;
-                        const cW = (imgAreaW - 12) / cols;
-                        const rows2 = Math.ceil(imageResults.length / cols);
-                        const cH = (imgAreaH - 8) / rows2;
-                        imageResults.slice(0, 4).forEach((img, idx) => {
-                            const c = idx % cols, r = Math.floor(idx / cols);
-                            const fit = calcFitSize(img.width, img.height, cW - 4, cH - 4);
-                            const x = 8 + 4 + c * (cW + 4) + (cW - 4 - fit.w) / 2;
-                            const y = contentY + 2 + r * (cH + 2) + (cH - 4 - fit.h) / 2;
-                            doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, '', 'FAST');
-                        });
-                    }
+                    const cols = imgsToDraw.length <= 2 ? imgsToDraw.length : (imgsToDraw.length <= 4 ? 2 : 3);
+                    const rows2 = Math.ceil(imgsToDraw.length / cols);
+
+                    const cW = (imgAreaW - (cols + 1) * 3) / cols;
+                    const cH = (imgAreaH - (rows2 + 1) * 3) / rows2;
+
+                    imgsToDraw.forEach((img, idx) => {
+                        const c = idx % cols, r = Math.floor(idx / cols);
+                        const titleH = 4.5;
+                        const fit = calcFitSize(img.width, img.height, cW - 2, cH - titleH - 1);
+
+                        const cellX = 8 + 3 + c * (cW + 3);
+                        const cellY = contentY + 3 + r * (cH + 3);
+
+                        const imgX = cellX + (cW - fit.w) / 2;
+                        const imgY = cellY + titleH;
+
+                        doc.setFontSize(6.5);
+                        doc.setTextColor(80, 80, 80);
+                        doc.setFont('helvetica', 'bold');
+                        const titleText = doc.splitTextToSize(processText(String(img.title || '').toUpperCase()), cW - 2);
+                        doc.text(titleText[0], cellX + cW / 2, cellY + 2.5, { align: 'center' });
+
+                        doc.addImage(img.dataUrl, 'JPEG', imgX, imgY, fit.w, fit.h, '', 'FAST');
+                    });
+
                     contentY += imgAreaH + 4;
                 }
 
