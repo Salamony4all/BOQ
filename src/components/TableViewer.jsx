@@ -3,10 +3,12 @@ import styles from '../styles/TableViewer.module.css';
 import actionStyles from '../styles/ActionBar.module.css';
 import CostingModal from './CostingModal';
 import MultiBudgetModal from './MultiBudgetModal';
+import ProjectSettingsPanel from './ProjectSettingsPanel';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 import { useCompanyProfile } from '../context/CompanyContext';
+import { useProject } from '../context/ProjectContext';
 import { fixArabic, hasArabic, loadArabicFont } from '../utils/arabicPdfUtils';
 
 const API_BASE = window.location.hostname === 'localhost' ? 'http://localhost:3001' : '';
@@ -25,11 +27,13 @@ const getFullUrl = (url) => {
 function TableViewer({ data }) {
     const profile = useCompanyProfile();
     const { companyName, logoWhite, logoBlue, website } = profile;
+    const { project } = useProject();
     const [selectedImage, setSelectedImage] = useState(null);
     const [tables, setTables] = useState([]); // Base Data
     const [costingFactors, setCostingFactors] = useState(null);
     const [isCostingOpen, setCostingOpen] = useState(false);
     const [isMultiBudgetOpen, setMultiBudgetOpen] = useState(false);
+    const [isProjectPanelOpen, setProjectPanelOpen] = useState(false);
 
     // Close on Escape
     useEffect(() => {
@@ -1061,6 +1065,704 @@ function TableViewer({ data }) {
         doc.save('MAS_export.pdf');
     };
 
+    // ===================== MATERIAL INSPECTION REPORT (MIR) — 1 PAGE PER ITEM =====================
+    const handleGenerateMIR = async (sourceTables) => {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const arabicLoaded = await loadArabicFont(doc);
+        let pageAdded = false;
+        let itemNumber = 1;
+
+        const colors = {
+            primary: [15, 23, 42],       // Slate 900
+            accent: [14, 165, 233],     // Sky 500
+            gold: [245, 158, 11],     // Amber 500
+            green: [16, 185, 129],     // Emerald
+            text: [51, 65, 85],
+            lightBg: [240, 249, 255],    // Sky 50
+            border: [186, 230, 253],    // Sky 200
+            white: [255, 255, 255]
+        };
+
+        const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
+        const today = new Date().toLocaleDateString('en-GB');
+        const mirRef = `MIR-${Date.now().toString().slice(-6)}`;
+
+        for (const table of sourceTables) {
+            const header = table.header || [];
+            const descIdx = header.findIndex(h => /description|desc/i.test(h));
+            const brandIdx = header.findIndex(h => /brand|maker|origin/i.test(h));
+            const qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
+            const uomIdx = header.findIndex(h => /uom|unit/i.test(h));
+            const snIdx = header.findIndex(h => /s\.?n|no\.|#/i.test(h));
+
+            for (const row of table.rows) {
+                if (!row.cells.some(c => c.value)) continue;
+                if (pageAdded) doc.addPage();
+                pageAdded = true;
+
+                // ── HEADER BAND ──
+                doc.setFillColor(...colors.primary);
+                doc.rect(0, 0, pageWidth, 22, 'F');
+                doc.setFillColor(...colors.accent);
+                doc.rect(0, 22, pageWidth, 2, 'F');
+
+                // Logo
+                const mirLogo = logoWhite || logoBlue;
+                if (mirLogo) {
+                    try {
+                        const dl = await getImageData(mirLogo, { format: 'image/png', maxWidth: 400 });
+                        if (dl) {
+                            const fit = calcFitSize(dl.width, dl.height, 32, 12);
+                            doc.addImage(dl.dataUrl, 'PNG', 10, 5, fit.w, fit.h);
+                        }
+                    } catch (e) { }
+                }
+
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text('MATERIAL INSPECTION REPORT', pageWidth / 2, 10, { align: 'center' });
+
+                doc.setFontSize(7.5);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Ref: ${mirRef}   |   Item ${String(itemNumber).padStart(3, '0')}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
+
+                // ── PROJECT INFO BOX ──
+                const pY = 28;
+                doc.setFillColor(...colors.lightBg);
+                doc.setDrawColor(...colors.border);
+                doc.setLineWidth(0.3);
+                doc.roundedRect(8, pY, pageWidth - 16, 26, 2, 2, 'FD');
+
+                const leftCol = 12, rightCol = pageWidth / 2 + 4;
+                const rowH = 5.5;
+                doc.setFontSize(7.5);
+                doc.setTextColor(...colors.text);
+
+                const pRows = [
+                    ['Project:', project.projectName || '—', 'Client:', project.clientName || '—'],
+                    ['Project No:', project.projectNumber || '—', 'Location / Zone:', project.locationZone || '—'],
+                    ['Contractor:', project.contractor || '—', 'Consultant:', project.consultant || '—'],
+                    ['Site Engineer:', project.siteEngineer || '—', 'Issue Date:', project.issueDate || today],
+                ];
+
+                pRows.forEach((r, i) => {
+                    const y = pY + 7 + i * rowH;
+                    doc.setFont('helvetica', 'bold'); doc.text(r[0], leftCol, y);
+                    doc.setFont('helvetica', 'normal'); doc.text(processText(r[1]), leftCol + 26, y);
+                    doc.setFont('helvetica', 'bold'); doc.text(r[2], rightCol, y);
+                    doc.setFont('helvetica', 'normal'); doc.text(processText(r[3]), rightCol + 30, y);
+                });
+
+                // ── ITEM DETAILS ──
+                const desc = descIdx > -1 ? row.cells[descIdx].value : 'N/A';
+                const brand = brandIdx > -1 ? row.cells[brandIdx].value : 'N/A';
+                const qty = qtyIdx > -1 ? row.cells[qtyIdx].value : 'As per BOQ';
+                const uom = uomIdx > -1 ? row.cells[uomIdx].value : 'No.';
+                const sn = snIdx > -1 ? row.cells[snIdx].value : String(itemNumber);
+
+                let contentY = 58;
+
+                // Item title band
+                doc.setFillColor(...colors.accent);
+                doc.roundedRect(8, contentY, pageWidth - 16, 8, 1, 1, 'F');
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'bold');
+                doc.text(`ITEM ${String(sn).padStart(3, '0')} — MATERIAL INSPECTION`, 12, contentY + 5.5);
+                contentY += 12;
+
+                // ── IMAGES ──
+                const imageCell = row.cells.find(c => c.images?.length > 0 || c.image);
+                const allImages = imageCell?.images || (imageCell?.image ? [imageCell.image] : []);
+                const imageResults = [];
+                for (const img of allImages.slice(0, 4)) {
+                    if (img?.url) {
+                        try {
+                            const ir = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
+                            if (ir) imageResults.push(ir);
+                        } catch (e) { }
+                    }
+                }
+
+                if (imageResults.length > 0) {
+                    const imgAreaW = pageWidth - 16;
+                    const imgAreaH = imageResults.length <= 2 ? 50 : 80;
+                    doc.setFillColor(252, 252, 252);
+                    doc.setDrawColor(...colors.border);
+                    doc.roundedRect(8, contentY, imgAreaW, imgAreaH, 2, 2, 'FD');
+
+                    if (imageResults.length === 1) {
+                        const img = imageResults[0];
+                        const fit = calcFitSize(img.width, img.height, 80, 44);
+                        const ix = (pageWidth - fit.w) / 2;
+                        doc.addImage(img.dataUrl, 'JPEG', ix, contentY + 3, fit.w, fit.h, '', 'FAST');
+                    } else {
+                        const cols = 2;
+                        const cW = (imgAreaW - 12) / cols;
+                        const rows2 = Math.ceil(imageResults.length / cols);
+                        const cH = (imgAreaH - 8) / rows2;
+                        imageResults.slice(0, 4).forEach((img, idx) => {
+                            const c = idx % cols, r = Math.floor(idx / cols);
+                            const fit = calcFitSize(img.width, img.height, cW - 4, cH - 4);
+                            const x = 8 + 4 + c * (cW + 4) + (cW - 4 - fit.w) / 2;
+                            const y = contentY + 2 + r * (cH + 2) + (cH - 4 - fit.h) / 2;
+                            doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, '', 'FAST');
+                        });
+                    }
+                    contentY += imgAreaH + 6;
+                }
+
+                // ── SPECIFICATION TABLE ──
+                autoTable(doc, {
+                    startY: contentY,
+                    margin: { left: 8, right: 8 },
+                    head: [[processText('Field'), processText('Details')]],
+                    body: [
+                        [processText('Description'), processText(desc)],
+                        [processText('Brand / Origin'), processText(brand)],
+                        [processText('Quantity'), processText(qty)],
+                        [processText('Unit of Measure'), processText(uom)],
+                        [processText('Material Status'), ''],
+                        [processText('Inspection Result'), ''],
+                        [processText('Remarks'), ''],
+                    ],
+                    theme: 'striped',
+                    styles: { fontSize: 8.5, cellPadding: 3, textColor: colors.text, overflow: 'linebreak', font: arabicLoaded ? 'Almarai' : 'helvetica' },
+                    headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 8.5 },
+                    alternateRowStyles: { fillColor: colors.lightBg },
+                    columnStyles: { 0: { cellWidth: 48, fontStyle: 'bold' } }
+                });
+
+                // ── INSPECTION CHECKLIST ──
+                const clY = doc.lastAutoTable.finalY + 6;
+                doc.setFillColor(...colors.primary);
+                doc.rect(8, clY, pageWidth - 16, 7, 'F');
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(8);
+                doc.setFont('helvetica', 'bold');
+                doc.text('INSPECTION CHECKLIST', pageWidth / 2, clY + 4.8, { align: 'center' });
+
+                const checkItems = [
+                    'Dimensions as per specifications',
+                    'Material grade/quality verified',
+                    'Finish / color matches approval',
+                    'Quantity matches BOQ',
+                    'No visible damage / defects',
+                    'Certificates / test reports attached',
+                ];
+
+                autoTable(doc, {
+                    startY: clY + 7,
+                    margin: { left: 8, right: 8 },
+                    head: [['Inspection Item', 'Yes', 'No', 'N/A', 'Comments']],
+                    body: checkItems.map(item => [item, '☐', '☐', '☐', '']),
+                    theme: 'grid',
+                    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
+                    headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+                    alternateRowStyles: { fillColor: [240, 249, 255] },
+                    columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 12, halign: 'center' }, 3: { cellWidth: 12, halign: 'center' }, 4: { cellWidth: 45 } }
+                });
+
+                // ── SIGNATURES ──
+                const sigY = doc.lastAutoTable.finalY + 6;
+                if (sigY + 28 < pageHeight - 8) {
+                    doc.setFillColor(...colors.primary);
+                    doc.rect(8, sigY, pageWidth - 16, 7, 'F');
+                    doc.setTextColor(...colors.white);
+                    doc.setFontSize(8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.8, { align: 'center' });
+
+                    const boxW = 54, boxH = 22, boxY = sigY + 9;
+                    const gap = (pageWidth - 16 - boxW * 3) / 2;
+                    ['Submitted By\n(Contractor)', 'Checked By\n(Consultant)', 'Approved By\n(Client)'].forEach((name, i) => {
+                        const x = 8 + i * (boxW + gap);
+                        doc.setFillColor(...colors.white);
+                        doc.setDrawColor(...colors.border);
+                        doc.setLineWidth(0.3);
+                        doc.rect(x, boxY, boxW, boxH, 'FD');
+                        doc.setFillColor(...colors.accent);
+                        doc.rect(x, boxY, boxW, 6, 'F');
+                        doc.setTextColor(...colors.white);
+                        doc.setFontSize(6.5);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(name.split('\n')[0], x + boxW / 2, boxY + 4, { align: 'center' });
+                        doc.setTextColor(...colors.text);
+                        doc.setFontSize(6);
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(name.split('\n')[1] || '', x + boxW / 2, boxY + 9, { align: 'center' });
+                        doc.text('Date: __________', x + boxW / 2, boxY + boxH - 2, { align: 'center' });
+                    });
+                }
+
+                // ── FOOTER ──
+                doc.setFillColor(...colors.primary);
+                doc.rect(0, pageHeight - 8, pageWidth, 8, 'F');
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(6);
+                doc.text(`BOQFlow | Material Inspection Report | ${mirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+
+                itemNumber++;
+            }
+        }
+        doc.save('MIR_export.pdf');
+    };
+
+    // ===================== WORK INSPECTION REQUEST (WIR) — 1 PAGE PER ITEM =====================
+    const handleGenerateWIR = async (sourceTables) => {
+        const doc = new jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const arabicLoaded = await loadArabicFont(doc);
+        let pageAdded = false;
+        let itemNumber = 1;
+
+        const colors = {
+            primary: [5, 46, 22],          // Green 950
+            accent: [16, 185, 129],       // Emerald 500
+            gold: [251, 191, 36],       // Amber 400
+            text: [30, 58, 54],
+            lightBg: [236, 253, 245],      // Emerald 50
+            border: [110, 231, 183],      // Emerald 300
+            white: [255, 255, 255]
+        };
+
+        const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
+        const today = new Date().toLocaleDateString('en-GB');
+        const wirRef = `WIR-${Date.now().toString().slice(-6)}`;
+
+        for (const table of sourceTables) {
+            const header = table.header || [];
+            const descIdx = header.findIndex(h => /description|desc/i.test(h));
+            const brandIdx = header.findIndex(h => /brand|maker|origin/i.test(h));
+            const qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
+            const uomIdx = header.findIndex(h => /uom|unit/i.test(h));
+            const snIdx = header.findIndex(h => /s\.?n|no\.|#/i.test(h));
+
+            for (const row of table.rows) {
+                if (!row.cells.some(c => c.value)) continue;
+                if (pageAdded) doc.addPage();
+                pageAdded = true;
+
+                // ── HEADER ──
+                doc.setFillColor(...colors.primary);
+                doc.rect(0, 0, pageWidth, 22, 'F');
+                doc.setFillColor(...colors.accent);
+                doc.rect(0, 22, pageWidth, 2, 'F');
+
+                const wirLogo = logoWhite || logoBlue;
+                if (wirLogo) {
+                    try {
+                        const dl = await getImageData(wirLogo, { format: 'image/png', maxWidth: 400 });
+                        if (dl) {
+                            const fit = calcFitSize(dl.width, dl.height, 32, 12);
+                            doc.addImage(dl.dataUrl, 'PNG', 10, 5, fit.w, fit.h);
+                        }
+                    } catch (e) { }
+                }
+
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text('WORK INSPECTION REQUEST', pageWidth / 2, 10, { align: 'center' });
+
+                doc.setFontSize(7.5);
+                doc.setFont('helvetica', 'normal');
+                doc.text(`Ref: ${wirRef}   |   Item ${String(itemNumber).padStart(3, '0')}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
+
+                // ── PROJECT INFO ──
+                const pY = 28;
+                doc.setFillColor(...colors.lightBg);
+                doc.setDrawColor(...colors.border);
+                doc.setLineWidth(0.3);
+                doc.roundedRect(8, pY, pageWidth - 16, 26, 2, 2, 'FD');
+
+                const leftCol = 12, rightCol = pageWidth / 2 + 4;
+                const rowH = 5.5;
+                doc.setFontSize(7.5);
+                doc.setTextColor(...colors.text);
+
+                const pRows = [
+                    ['Project:', project.projectName || '—', 'Client:', project.clientName || '—'],
+                    ['Project No:', project.projectNumber || '—', 'Location / Zone:', project.locationZone || '—'],
+                    ['Contractor:', project.contractor || '—', 'Consultant:', project.consultant || '—'],
+                    ['Site Engineer:', project.siteEngineer || '—', 'Inspection Date:', project.issueDate || today],
+                ];
+
+                pRows.forEach((r, i) => {
+                    const y = pY + 7 + i * rowH;
+                    doc.setFont('helvetica', 'bold'); doc.text(r[0], leftCol, y);
+                    doc.setFont('helvetica', 'normal'); doc.text(processText(r[1]), leftCol + 26, y);
+                    doc.setFont('helvetica', 'bold'); doc.text(r[2], rightCol, y);
+                    doc.setFont('helvetica', 'normal'); doc.text(processText(r[3]), rightCol + 30, y);
+                });
+
+                // ── ITEM DETAILS ──
+                const desc = descIdx > -1 ? row.cells[descIdx].value : 'N/A';
+                const brand = brandIdx > -1 ? row.cells[brandIdx].value : 'N/A';
+                const qty = qtyIdx > -1 ? row.cells[qtyIdx].value : 'As per BOQ';
+                const uom = uomIdx > -1 ? row.cells[uomIdx].value : 'No.';
+                const sn = snIdx > -1 ? row.cells[snIdx].value : String(itemNumber);
+
+                let contentY = 58;
+
+                // Item title band
+                doc.setFillColor(...colors.accent);
+                doc.roundedRect(8, contentY, pageWidth - 16, 8, 1, 1, 'F');
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(9);
+                doc.setFont('helvetica', 'bold');
+                doc.text(`ITEM ${String(sn).padStart(3, '0')} — WORK INSPECTION`, 12, contentY + 5.5);
+                contentY += 12;
+
+                // ── IMAGES ──
+                const imageCell = row.cells.find(c => c.images?.length > 0 || c.image);
+                const allImages = imageCell?.images || (imageCell?.image ? [imageCell.image] : []);
+                const imageResults = [];
+                for (const img of allImages.slice(0, 4)) {
+                    if (img?.url) {
+                        try {
+                            const ir = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
+                            if (ir) imageResults.push(ir);
+                        } catch (e) { }
+                    }
+                }
+
+                if (imageResults.length > 0) {
+                    const imgAreaW = pageWidth - 16;
+                    const imgAreaH = imageResults.length <= 2 ? 50 : 80;
+                    doc.setFillColor(252, 252, 252);
+                    doc.setDrawColor(...colors.border);
+                    doc.roundedRect(8, contentY, imgAreaW, imgAreaH, 2, 2, 'FD');
+
+                    if (imageResults.length === 1) {
+                        const img = imageResults[0];
+                        const fit = calcFitSize(img.width, img.height, 80, 44);
+                        const ix = (pageWidth - fit.w) / 2;
+                        doc.addImage(img.dataUrl, 'JPEG', ix, contentY + 3, fit.w, fit.h, '', 'FAST');
+                    } else {
+                        const cols = 2;
+                        const cW = (imgAreaW - 12) / cols;
+                        const rows2 = Math.ceil(imageResults.length / cols);
+                        const cH = (imgAreaH - 8) / rows2;
+                        imageResults.slice(0, 4).forEach((img, idx) => {
+                            const c = idx % cols, r = Math.floor(idx / cols);
+                            const fit = calcFitSize(img.width, img.height, cW - 4, cH - 4);
+                            const x = 8 + 4 + c * (cW + 4) + (cW - 4 - fit.w) / 2;
+                            const y = contentY + 2 + r * (cH + 2) + (cH - 4 - fit.h) / 2;
+                            doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, '', 'FAST');
+                        });
+                    }
+                    contentY += imgAreaH + 6;
+                }
+
+                // ── SPECIFICATION TABLE ──
+                autoTable(doc, {
+                    startY: contentY,
+                    margin: { left: 8, right: 8 },
+                    head: [[processText('Field'), processText('Details')]],
+                    body: [
+                        [processText('Work Description'), processText(desc)],
+                        [processText('Brand / Material'), processText(brand)],
+                        [processText('Quantity'), processText(qty)],
+                        [processText('Unit'), processText(uom)],
+                        [processText('Work Area / Zone'), processText(project.locationZone || '')],
+                        [processText('Inspection Required'), ''],
+                        [processText('Remarks'), ''],
+                    ],
+                    theme: 'striped',
+                    styles: { fontSize: 8.5, cellPadding: 3, textColor: colors.text, overflow: 'linebreak', font: arabicLoaded ? 'Almarai' : 'helvetica' },
+                    headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 8.5 },
+                    alternateRowStyles: { fillColor: colors.lightBg },
+                    columnStyles: { 0: { cellWidth: 48, fontStyle: 'bold' } }
+                });
+
+                // ── WORK CHECKLIST ──
+                const clY = doc.lastAutoTable.finalY + 6;
+                doc.setFillColor(...colors.primary);
+                doc.rect(8, clY, pageWidth - 16, 7, 'F');
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(8);
+                doc.setFont('helvetica', 'bold');
+                doc.text('WORK INSPECTION CHECKLIST', pageWidth / 2, clY + 4.8, { align: 'center' });
+
+                const checkItems = [
+                    'Work area ready and accessible',
+                    'Shop drawings / IFC issued & approved',
+                    'Materials on site and approved',
+                    'Previous work inspection passed',
+                    'Works conform to specifications',
+                    'Safety measures in place',
+                ];
+
+                autoTable(doc, {
+                    startY: clY + 7,
+                    margin: { left: 8, right: 8 },
+                    head: [['Inspection Item', 'Yes', 'No', 'N/A', 'Comments']],
+                    body: checkItems.map(item => [item, '☐', '☐', '☐', '']),
+                    theme: 'grid',
+                    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
+                    headStyles: { fillColor: [5, 46, 22], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+                    alternateRowStyles: { fillColor: colors.lightBg },
+                    columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 12, halign: 'center' }, 3: { cellWidth: 12, halign: 'center' }, 4: { cellWidth: 45 } }
+                });
+
+                // ── SIGNATURES ──
+                const sigY = doc.lastAutoTable.finalY + 6;
+                if (sigY + 28 < pageHeight - 8) {
+                    doc.setFillColor(...colors.primary);
+                    doc.rect(8, sigY, pageWidth - 16, 7, 'F');
+                    doc.setTextColor(...colors.white);
+                    doc.setFontSize(8);
+                    doc.setFont('helvetica', 'bold');
+                    doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.8, { align: 'center' });
+
+                    const boxW = 54, boxH = 22, boxY = sigY + 9;
+                    const gap = (pageWidth - 16 - boxW * 3) / 2;
+                    ['Requested By\n(Contractor)', 'Inspected By\n(Consultant)', 'Approved By\n(Client)'].forEach((name, i) => {
+                        const x = 8 + i * (boxW + gap);
+                        doc.setFillColor(...colors.white);
+                        doc.setDrawColor(...colors.border);
+                        doc.setLineWidth(0.3);
+                        doc.rect(x, boxY, boxW, boxH, 'FD');
+                        doc.setFillColor(...colors.accent);
+                        doc.rect(x, boxY, boxW, 6, 'F');
+                        doc.setTextColor(...colors.white);
+                        doc.setFontSize(6.5);
+                        doc.setFont('helvetica', 'bold');
+                        doc.text(name.split('\n')[0], x + boxW / 2, boxY + 4, { align: 'center' });
+                        doc.setTextColor(...colors.text);
+                        doc.setFontSize(6);
+                        doc.setFont('helvetica', 'normal');
+                        doc.text(name.split('\n')[1] || '', x + boxW / 2, boxY + 9, { align: 'center' });
+                        doc.text('Date: __________', x + boxW / 2, boxY + boxH - 2, { align: 'center' });
+                    });
+                }
+
+                // ── FOOTER ──
+                doc.setFillColor(...colors.primary);
+                doc.rect(0, pageHeight - 8, pageWidth, 8, 'F');
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(6);
+                doc.text(`BOQFlow | Work Inspection Request | ${wirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+
+                itemNumber++;
+            }
+        }
+        doc.save('WIR_export.pdf');
+    };
+
+    // ===================== DELIVERY NOTE — ALL ITEMS IN ONE TABLE =====================
+    const handleGenerateDeliveryNote = async (sourceTables) => {
+        const doc = new jsPDF({ orientation: 'portrait' });
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        const arabicLoaded = await loadArabicFont(doc);
+
+        const colors = {
+            primary: [30, 41, 59],
+            accent: [99, 102, 241],       // Indigo 500
+            gold: [245, 158, 11],
+            text: [51, 65, 85],
+            lightBg: [238, 242, 255],      // Indigo 50
+            border: [199, 210, 254],      // Indigo 200
+            white: [255, 255, 255]
+        };
+
+        const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
+        const today = new Date().toLocaleDateString('en-GB');
+        const dnRef = `DN-${Date.now().toString().slice(-6)}`;
+
+        // ── HEADER ──
+        doc.setFillColor(...colors.primary);
+        doc.rect(0, 0, pageWidth, 30, 'F');
+        doc.setFillColor(...colors.accent);
+        doc.rect(0, 30, pageWidth, 2, 'F');
+
+        const dnLogo = logoWhite || logoBlue;
+        if (dnLogo) {
+            try {
+                const dl = await getImageData(dnLogo, { format: 'image/png', maxWidth: 400 });
+                if (dl) {
+                    const fit = calcFitSize(dl.width, dl.height, 35, 15);
+                    doc.addImage(dl.dataUrl, 'PNG', 10, 7, fit.w, fit.h);
+                }
+            } catch (e) { }
+        }
+
+        doc.setTextColor(...colors.white);
+        doc.setFontSize(18);
+        doc.setFont('helvetica', 'bold');
+        doc.text('DELIVERY NOTE', pageWidth / 2, 14, { align: 'center' });
+
+        doc.setFontSize(8.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Ref: ${dnRef}   |   Date: ${today}   |   Rev: ${project.revision || 'Rev 0'}`, pageWidth / 2, 23, { align: 'center' });
+
+        // ── PROJECT INFO BOX (2 columns) ──
+        const pY = 36;
+        doc.setFillColor(...colors.lightBg);
+        doc.setDrawColor(...colors.border);
+        doc.setLineWidth(0.3);
+        doc.roundedRect(8, pY, pageWidth - 16, 30, 2, 2, 'FD');
+
+        const leftCol = 12, rightCol = pageWidth / 2 + 4;
+        const rowH = 5.5;
+        doc.setFontSize(8);
+        doc.setTextColor(...colors.text);
+
+        const pRows = [
+            ['Project Name:', project.projectName || '—', 'Project No:', project.projectNumber || '—'],
+            ['Client / Owner:', project.clientName || '—', 'Location:', project.locationZone || '—'],
+            ['Contractor:', project.contractor || '—', 'Consultant:', project.consultant || '—'],
+            ['Site Engineer:', project.siteEngineer || '—', 'Delivery Date:', today],
+        ];
+
+        pRows.forEach((r, i) => {
+            const y = pY + 8 + i * rowH;
+            doc.setFont('helvetica', 'bold'); doc.text(r[0], leftCol, y);
+            doc.setFont('helvetica', 'normal'); doc.text(processText(r[1]), leftCol + 28, y);
+            doc.setFont('helvetica', 'bold'); doc.text(r[2], rightCol, y);
+            doc.setFont('helvetica', 'normal'); doc.text(processText(r[3]), rightCol + 26, y);
+        });
+
+        // ── DELIVERY TABLE (ALL ITEMS) ──
+        let contentY = pY + 34;
+
+        // Collect all rows across tables
+        const allRows = [];
+        let rowCounter = 1;
+        for (const table of sourceTables) {
+            const header = table.header || [];
+            const descIdx = header.findIndex(h => /description|desc/i.test(h));
+            const brandIdx = header.findIndex(h => /brand|maker|origin/i.test(h));
+            const qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
+            const uomIdx = header.findIndex(h => /uom|unit/i.test(h));
+
+            for (const row of table.rows) {
+                if (!row.cells.some(c => c.value)) continue;
+                const desc = descIdx > -1 ? row.cells[descIdx].value : '';
+                const brand = brandIdx > -1 ? row.cells[brandIdx].value : '';
+                const qty = qtyIdx > -1 ? row.cells[qtyIdx].value : '';
+                const uom = uomIdx > -1 ? row.cells[uomIdx].value : '';
+                if (!desc && !brand) continue;
+                allRows.push([
+                    String(rowCounter++).padStart(3, '0'),
+                    processText(desc),
+                    processText(brand),
+                    processText(qty),
+                    processText(uom),
+                    '', // Delivered Qty — to be filled
+                    '', // Condition
+                    '', // Notes
+                ]);
+            }
+        }
+
+        autoTable(doc, {
+            startY: contentY,
+            margin: { left: 8, right: 8 },
+            head: [[
+                '#',
+                'Item Description',
+                'Brand / Origin',
+                'Ordered Qty',
+                'UOM',
+                'Delivered Qty',
+                'Condition',
+                'Notes',
+            ]],
+            body: allRows,
+            theme: 'striped',
+            styles: { fontSize: 7.5, cellPadding: 2.5, textColor: colors.text, overflow: 'linebreak', font: arabicLoaded ? 'Almarai' : 'helvetica', valign: 'middle' },
+            headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 7.5, halign: 'center' },
+            alternateRowStyles: { fillColor: colors.lightBg },
+            columnStyles: {
+                0: { cellWidth: 9, halign: 'center' },
+                1: { cellWidth: 55, halign: 'left' },
+                2: { cellWidth: 28, halign: 'left' },
+                3: { cellWidth: 16, halign: 'center' },
+                4: { cellWidth: 12, halign: 'center' },
+                5: { cellWidth: 18, halign: 'center' },
+                6: { cellWidth: 18, halign: 'center' },
+                7: { cellWidth: 'auto' },
+            },
+            didDrawPage: (data) => {
+                // Re-draw header band on overflow pages
+                doc.setFillColor(...colors.primary);
+                doc.rect(0, 0, pageWidth, 10, 'F');
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(8);
+                doc.setFont('helvetica', 'bold');
+                doc.text(`DELIVERY NOTE — ${dnRef}`, pageWidth / 2, 7, { align: 'center' });
+
+                // Footer
+                doc.setFontSize(7);
+                doc.setFont('helvetica', 'normal');
+                doc.setTextColor(150, 150, 150);
+                doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageWidth - 10, pageHeight - 5, { align: 'right' });
+                const fText = website || companyName || 'BOQFlow';
+                doc.text(processText(fText), 10, pageHeight - 5);
+            }
+        });
+
+        // ── SUMMARY BAR ──
+        const finalY = doc.lastAutoTable.finalY + 5;
+        doc.setFillColor(...colors.lightBg);
+        doc.setDrawColor(...colors.border);
+        doc.roundedRect(8, finalY, pageWidth - 16, 10, 2, 2, 'FD');
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...colors.text);
+        doc.text(`Total Items: ${allRows.length}`, 14, finalY + 6.5);
+        doc.setFont('helvetica', 'normal');
+        doc.text('Received in Good Condition: ☐ YES   ☐ NO', pageWidth / 2, finalY + 6.5, { align: 'center' });
+
+        // ── SIGNATURES ──
+        const sigY = finalY + 18;
+        if (sigY + 28 < pageHeight - 8) {
+            doc.setFillColor(...colors.primary);
+            doc.rect(8, sigY, pageWidth - 16, 7, 'F');
+            doc.setTextColor(...colors.white);
+            doc.setFontSize(8);
+            doc.setFont('helvetica', 'bold');
+            doc.text('DELIVERY CONFIRMATION', pageWidth / 2, sigY + 4.8, { align: 'center' });
+
+            const boxW = 54, boxH = 22, boxY = sigY + 9;
+            const gap = (pageWidth - 16 - boxW * 3) / 2;
+            ['Delivered By\n(Supplier)', 'Received By\n(Contractor)', 'Verified By\n(Consultant)'].forEach((name, i) => {
+                const x = 8 + i * (boxW + gap);
+                doc.setFillColor(...colors.white);
+                doc.setDrawColor(...colors.border);
+                doc.setLineWidth(0.3);
+                doc.rect(x, boxY, boxW, boxH, 'FD');
+                doc.setFillColor(...colors.accent);
+                doc.rect(x, boxY, boxW, 6, 'F');
+                doc.setTextColor(...colors.white);
+                doc.setFontSize(6.5);
+                doc.setFont('helvetica', 'bold');
+                doc.text(name.split('\n')[0], x + boxW / 2, boxY + 4, { align: 'center' });
+                doc.setTextColor(...colors.text);
+                doc.setFontSize(6);
+                doc.setFont('helvetica', 'normal');
+                doc.text(name.split('\n')[1] || '', x + boxW / 2, boxY + 9, { align: 'center' });
+                doc.text('Date: __________', x + boxW / 2, boxY + boxH - 2, { align: 'center' });
+            });
+        }
+
+        // ── FOOTER ──
+        doc.setFillColor(...colors.primary);
+        doc.rect(0, pageHeight - 8, pageWidth, 8, 'F');
+        doc.setTextColor(...colors.white);
+        doc.setFontSize(6);
+        doc.text(`BOQFlow | Delivery Note | ${dnRef}  |  Powered by BOQFlow`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+
+        doc.save('DeliveryNote_export.pdf');
+    };
+
     // ===================== PREMIUM POWERPOINT PRESENTATION (LIGHT THEME) =====================
     const handleGeneratePresentation = async (sourceTables) => {
         const PptxGenJS = (await import('pptxgenjs')).default;
@@ -1836,15 +2538,35 @@ function TableViewer({ data }) {
             {/* Render Original Tables */}
             {renderTableList(tablesWithSummary, false)}
 
+            {/* Project Settings Panel */}
+            <ProjectSettingsPanel isOpen={isProjectPanelOpen} onClose={() => setProjectPanelOpen(false)} />
+
             {/* Set of Actions for Original Tables */}
             <div className={actionStyles.actionBar}>
-                <div className={actionStyles.actionTitle}>Original Data Actions</div>
+                <div className={actionStyles.actionBarTop}>
+                    <div className={actionStyles.actionTitle}>Original Data Actions</div>
+                    <button
+                        className={actionStyles.projectSettingsBtn}
+                        onClick={() => setProjectPanelOpen(true)}
+                        title="Project Settings — fills info on all generated documents"
+                    >
+                        ☰ Project Settings
+                        {(project.projectName || project.clientName) && (
+                            <span className={actionStyles.projectBadge}>
+                                {project.projectName || project.clientName}
+                            </span>
+                        )}
+                    </button>
+                </div>
                 <div className={actionStyles.buttonGroup}>
                     <button className={actionStyles.actionBtn} onClick={() => handleDownloadPDF(tables, 'Original_Offer')}>📄 Download Offer PDF</button>
                     <button className={actionStyles.actionBtn} onClick={() => handleDownloadExcel(tables, 'Original_Offer')}>📊 Download Offer Excel</button>
                     <button className={actionStyles.actionBtn} onClick={() => handleGeneratePresentation(tables)}>📽️ Generate Presentation</button>
                     <button className={actionStyles.actionBtn} onClick={() => handleGeneratePptPdf(tables)}>📑 Presentation PDF</button>
                     <button className={actionStyles.actionBtn} onClick={() => handleGenerateMas(tables)}>📋 Generate MAS</button>
+                    <button className={`${actionStyles.actionBtn} ${actionStyles.actionBtnMir}`} onClick={() => handleGenerateMIR(tables)}>🔍 Generate MIR</button>
+                    <button className={`${actionStyles.actionBtn} ${actionStyles.actionBtnWir}`} onClick={() => handleGenerateWIR(tables)}>🔧 Generate WIR</button>
+                    <button className={`${actionStyles.actionBtn} ${actionStyles.actionBtnDn}`} onClick={() => handleGenerateDeliveryNote(tables)}>🚚 Delivery Note</button>
                 </div>
             </div>
 
@@ -1876,13 +2598,30 @@ function TableViewer({ data }) {
 
                     {/* Set of Actions for Costed Tables */}
                     <div className={actionStyles.actionBar}>
-                        <div className={actionStyles.actionTitle} style={{ color: '#f59e0b' }}>Costed Data Actions</div>
+                        <div className={actionStyles.actionBarTop}>
+                            <div className={actionStyles.actionTitle} style={{ color: '#f59e0b' }}>Costed Data Actions</div>
+                            <button
+                                className={actionStyles.projectSettingsBtn}
+                                onClick={() => setProjectPanelOpen(true)}
+                                title="Project Settings"
+                            >
+                                ☰ Project Settings
+                                {(project.projectName || project.clientName) && (
+                                    <span className={actionStyles.projectBadge}>
+                                        {project.projectName || project.clientName}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
                         <div className={actionStyles.buttonGroup}>
                             <button className={actionStyles.actionBtn} onClick={() => handleDownloadPDF(costedTables, 'Costed_Offer')}>📄 Download Costed PDF</button>
                             <button className={actionStyles.actionBtn} onClick={() => handleDownloadExcel(costedTables, 'Costed_Offer')}>📊 Download Costed Excel</button>
                             <button className={actionStyles.actionBtn} onClick={() => handleGeneratePresentation(costedTables)}>📽️ Generate Costed Presentation</button>
                             <button className={actionStyles.actionBtn} onClick={() => handleGeneratePptPdf(costedTables)}>📑 Costed Presentation PDF</button>
                             <button className={actionStyles.actionBtn} onClick={() => handleGenerateMas(costedTables)}>📋 Generate Costed MAS</button>
+                            <button className={`${actionStyles.actionBtn} ${actionStyles.actionBtnMir}`} onClick={() => handleGenerateMIR(costedTables)}>🔍 Generate Costed MIR</button>
+                            <button className={`${actionStyles.actionBtn} ${actionStyles.actionBtnWir}`} onClick={() => handleGenerateWIR(costedTables)}>🔧 Generate Costed WIR</button>
+                            <button className={`${actionStyles.actionBtn} ${actionStyles.actionBtnDn}`} onClick={() => handleGenerateDeliveryNote(costedTables)}>🚚 Costed Delivery Note</button>
                         </div>
                     </div>
                 </div>

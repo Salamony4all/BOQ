@@ -12,6 +12,56 @@
     gap: 1.5rem;
 }
 
+/* ── Top row: title + project settings button ── */
+.actionBarTop {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+/* ── Project Settings Hamburger Button ── */
+.projectSettingsBtn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 1rem;
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    border-radius: 8px;
+    background: rgba(245, 158, 11, 0.08);
+    color: #f59e0b;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    letter-spacing: 0.2px;
+}
+
+.projectSettingsBtn:hover {
+    background: rgba(245, 158, 11, 0.18);
+    border-color: #f59e0b;
+    transform: translateY(-1px);
+    box-shadow: 0 3px 8px rgba(245, 158, 11, 0.25);
+}
+
+.projectBadge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    background: rgba(245, 158, 11, 0.22);
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #fbbf24;
+    max-width: 160px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .actionTitle {
     font-size: 1rem;
     font-weight: 500;
@@ -20,6 +70,7 @@
     letter-spacing: 1px;
     margin-bottom: 0.5rem;
 }
+
 
 /* Button Group Centered */
 .buttonGroup {
@@ -68,6 +119,33 @@
     box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
     margin: 2rem 0;
     /* Spacing around it */
+}
+
+/* ── MIR Button (Sky Blue) ── */
+.actionBtnMir {
+    background: linear-gradient(135deg, #0c4a6e 0%, #0369a1 100%) !important;
+}
+
+.actionBtnMir:hover {
+    background: linear-gradient(135deg, #075985 0%, #0284c7 100%) !important;
+}
+
+/* ── WIR Button (Emerald) ── */
+.actionBtnWir {
+    background: linear-gradient(135deg, #064e3b 0%, #059669 100%) !important;
+}
+
+.actionBtnWir:hover {
+    background: linear-gradient(135deg, #065f46 0%, #10b981 100%) !important;
+}
+
+/* ── Delivery Note Button (Indigo) ── */
+.actionBtnDn {
+    background: linear-gradient(135deg, #312e81 0%, #4f46e5 100%) !important;
+}
+
+.actionBtnDn:hover {
+    background: linear-gradient(135deg, #3730a3 0%, #6366f1 100%) !important;
 }
 
 .btnCostingTrigger:hover {
