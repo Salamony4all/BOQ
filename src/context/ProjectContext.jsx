@@ -12,6 +12,8 @@ const DEFAULT_PROJECT = {
     siteEngineer: '',
     contractor: '',
     consultant: '',
+    includeContractor: true,
+    includeConsultant: true,
     issueDate: new Date().toISOString().split('T')[0],
     revision: 'Rev 0',
 };

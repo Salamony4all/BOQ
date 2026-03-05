@@ -1144,7 +1144,7 @@ function TableViewer({ data }) {
                 const pRows = [
                     ['Project:', project.projectName || '—', 'Client:', project.clientName || '—'],
                     ['Project No:', project.projectNumber || '—', 'Location / Zone:', project.locationZone || '—'],
-                    ['Contractor:', project.contractor || '—', 'Consultant:', project.consultant || '—'],
+                    ['Contractor:', project.includeContractor === false ? 'N/A' : (project.contractor || '—'), 'Consultant:', project.includeConsultant === false ? 'N/A' : (project.consultant || '—')],
                     ['Site Engineer:', project.siteEngineer || '—', 'Issue Date:', project.issueDate || today],
                 ];
 
@@ -1276,9 +1276,16 @@ function TableViewer({ data }) {
                     doc.setFont('helvetica', 'bold');
                     doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.2, { align: 'center' });
 
+                    const sigParties = [
+                        { name: 'Submitted By\n(Contractor)', keep: project.includeContractor !== false },
+                        { name: 'Checked By\n(Consultant)', keep: project.includeConsultant !== false },
+                        { name: 'Approved By\n(Client)', keep: true }
+                    ].filter(p => p.keep).map(p => p.name);
+
                     const boxW = 54, boxH = 19, boxY = sigY + 8;
-                    const gap = (pageWidth - 16 - boxW * 3) / 2;
-                    ['Submitted By\n(Contractor)', 'Checked By\n(Consultant)', 'Approved By\n(Client)'].forEach((name, i) => {
+                    const gap = sigParties.length > 1 ? (pageWidth - 16 - boxW * sigParties.length) / (sigParties.length - 1) : 0;
+
+                    sigParties.forEach((name, i) => {
                         const x = 8 + i * (boxW + gap);
                         doc.setFillColor(...colors.white);
                         doc.setDrawColor(...colors.border);
@@ -1388,7 +1395,7 @@ function TableViewer({ data }) {
                 const pRows = [
                     ['Project:', project.projectName || '—', 'Client:', project.clientName || '—'],
                     ['Project No:', project.projectNumber || '—', 'Location / Zone:', project.locationZone || '—'],
-                    ['Contractor:', project.contractor || '—', 'Consultant:', project.consultant || '—'],
+                    ['Contractor:', project.includeContractor === false ? 'N/A' : (project.contractor || '—'), 'Consultant:', project.includeConsultant === false ? 'N/A' : (project.consultant || '—')],
                     ['Site Engineer:', project.siteEngineer || '—', 'Inspection Date:', project.issueDate || today],
                 ];
 
@@ -1520,9 +1527,16 @@ function TableViewer({ data }) {
                     doc.setFont('helvetica', 'bold');
                     doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.2, { align: 'center' });
 
+                    const sigParties = [
+                        { name: 'Requested By\n(Contractor)', keep: project.includeContractor !== false },
+                        { name: 'Inspected By\n(Consultant)', keep: project.includeConsultant !== false },
+                        { name: 'Approved By\n(Client)', keep: true }
+                    ].filter(p => p.keep).map(p => p.name);
+
                     const boxW = 54, boxH = 19, boxY = sigY + 8;
-                    const gap = (pageWidth - 16 - boxW * 3) / 2;
-                    ['Requested By\n(Contractor)', 'Inspected By\n(Consultant)', 'Approved By\n(Client)'].forEach((name, i) => {
+                    const gap = sigParties.length > 1 ? (pageWidth - 16 - boxW * sigParties.length) / (sigParties.length - 1) : 0;
+
+                    sigParties.forEach((name, i) => {
                         const x = 8 + i * (boxW + gap);
                         doc.setFillColor(...colors.white);
                         doc.setDrawColor(...colors.border);
@@ -1617,7 +1631,7 @@ function TableViewer({ data }) {
         const pRows = [
             ['Project Name:', project.projectName || '—', 'Project No:', project.projectNumber || '—'],
             ['Client / Owner:', project.clientName || '—', 'Location:', project.locationZone || '—'],
-            ['Contractor:', project.contractor || '—', 'Consultant:', project.consultant || '—'],
+            ['Contractor:', project.includeContractor === false ? 'N/A' : (project.contractor || '—'), 'Consultant:', project.includeConsultant === false ? 'N/A' : (project.consultant || '—')],
             ['Site Engineer:', project.siteEngineer || '—', 'Delivery Date:', today],
         ];
 
@@ -1731,9 +1745,16 @@ function TableViewer({ data }) {
             doc.setFont('helvetica', 'bold');
             doc.text('DELIVERY CONFIRMATION', pageWidth / 2, sigY + 4.8, { align: 'center' });
 
+            const sigParties = [
+                { name: 'Delivered By\n(Supplier)', keep: true },
+                { name: 'Received By\n(Contractor)', keep: project.includeContractor !== false },
+                { name: 'Verified By\n(Consultant)', keep: project.includeConsultant !== false }
+            ].filter(p => p.keep).map(p => p.name);
+
             const boxW = 54, boxH = 22, boxY = sigY + 9;
-            const gap = (pageWidth - 16 - boxW * 3) / 2;
-            ['Delivered By\n(Supplier)', 'Received By\n(Contractor)', 'Verified By\n(Consultant)'].forEach((name, i) => {
+            const gap = sigParties.length > 1 ? (pageWidth - 16 - boxW * sigParties.length) / (sigParties.length - 1) : 0;
+
+            sigParties.forEach((name, i) => {
                 const x = 8 + i * (boxW + gap);
                 doc.setFillColor(...colors.white);
                 doc.setDrawColor(...colors.border);

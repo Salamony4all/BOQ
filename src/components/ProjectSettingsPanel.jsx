@@ -7,8 +7,8 @@ const FIELDS = [
     { key: 'projectNumber', label: 'Project Number', placeholder: 'e.g. PRJ-2026-001', icon: '🔢' },
     { key: 'clientName', label: 'Client / Owner', placeholder: 'e.g. ABC Holding Group', icon: '👤' },
     { key: 'locationZone', label: 'Location / Zone', placeholder: 'e.g. Zone B – Level 3', icon: '📍' },
-    { key: 'contractor', label: 'Contractor', placeholder: 'e.g. XYZ Contracting LLC', icon: '🏢' },
-    { key: 'consultant', label: 'Consultant', placeholder: 'e.g. AECOM Middle East', icon: '📐' },
+    { key: 'contractor', label: 'Contractor', placeholder: 'e.g. XYZ Contracting LLC', icon: '🏢', toggleKey: 'includeContractor' },
+    { key: 'consultant', label: 'Consultant', placeholder: 'e.g. AECOM Middle East', icon: '📐', toggleKey: 'includeConsultant' },
     { key: 'siteEngineer', label: 'Site Engineer', placeholder: 'e.g. Eng. Ahmed Al-Rashid', icon: '👷' },
     { key: 'issueDate', label: 'Issue Date', placeholder: '', icon: '📅', type: 'date' },
     { key: 'revision', label: 'Revision', placeholder: 'e.g. Rev 0', icon: '🔄' },
@@ -85,21 +85,38 @@ export default function ProjectSettingsPanel({ isOpen, onClose }) {
 
                 {/* Fields */}
                 <div className={styles.fieldsScroll}>
-                    {FIELDS.map(({ key, label, placeholder, icon, type }) => (
-                        <div key={key} className={styles.fieldGroup}>
-                            <label className={styles.fieldLabel}>
-                                <span className={styles.fieldIcon}>{icon}</span>
-                                {label}
-                            </label>
-                            <input
-                                type={type || 'text'}
-                                className={styles.fieldInput}
-                                value={local[key] || ''}
-                                onChange={e => handleChange(key, e.target.value)}
-                                placeholder={placeholder}
-                            />
-                        </div>
-                    ))}
+                    {FIELDS.map(({ key, label, placeholder, icon, type, toggleKey }) => {
+                        const isToggledOff = toggleKey ? local[toggleKey] === false : false;
+
+                        return (
+                            <div key={key} className={`${styles.fieldGroup} ${isToggledOff ? styles.fieldGroupDisabled : ''}`}>
+                                <div className={styles.fieldHeader}>
+                                    <label className={styles.fieldLabel}>
+                                        <span className={styles.fieldIcon}>{icon}</span>
+                                        {label}
+                                    </label>
+                                    {toggleKey && (
+                                        <button
+                                            className={`${styles.toggleBtn} ${isToggledOff ? styles.toggleBtnAdd : styles.toggleBtnRemove}`}
+                                            title={isToggledOff ? 'Include in documents' : 'Remove from documents'}
+                                            onClick={() => handleChange(toggleKey, isToggledOff)}
+                                            type="button"
+                                        >
+                                            {isToggledOff ? '+ Add' : '× Hide'}
+                                        </button>
+                                    )}
+                                </div>
+                                <input
+                                    type={type || 'text'}
+                                    className={styles.fieldInput}
+                                    value={local[key] || ''}
+                                    onChange={e => handleChange(key, e.target.value)}
+                                    placeholder={placeholder}
+                                    disabled={isToggledOff}
+                                />
+                            </div>
+                        );
+                    })}
                 </div>
 
                 {/* Footer Actions */}

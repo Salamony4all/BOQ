@@ -162,6 +162,56 @@
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
+    transition: opacity 0.3s;
+}
+
+.fieldGroupDisabled {
+    opacity: 0.4;
+    filter: grayscale(1);
+    pointer-events: none;
+    /* Prevents interaction with the input when wrapper is disabled */
+}
+
+/* Re-enable pointer events for the header so we can click the toggle */
+.fieldGroupDisabled .fieldHeader {
+    pointer-events: auto;
+}
+
+.fieldHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.toggleBtn {
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.2rem 0.5rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.toggleBtnRemove {
+    color: #ef4444;
+}
+
+.toggleBtnRemove:hover {
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.toggleBtnAdd {
+    color: #10b981;
+}
+
+.toggleBtnAdd:hover {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
 }
 
 .fieldLabel {
