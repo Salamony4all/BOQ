@@ -8,6 +8,7 @@ const DEFAULT_PROJECT = {
     projectName: '',
     projectNumber: '',
     clientName: '',
+    clientLogo: '',
     locationZone: '',
     siteEngineer: '',
     contractor: '',

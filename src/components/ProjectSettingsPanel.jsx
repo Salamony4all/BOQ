@@ -6,6 +6,7 @@ const FIELDS = [
     { key: 'projectName', label: 'Project Name', placeholder: 'e.g. Al Rayyan Tower Fit-Out', icon: '🏗️' },
     { key: 'projectNumber', label: 'Project Number', placeholder: 'e.g. PRJ-2026-001', icon: '🔢' },
     { key: 'clientName', label: 'Client / Owner', placeholder: 'e.g. ABC Holding Group', icon: '👤' },
+    { key: 'clientLogo', label: 'Client Logo', type: 'image', icon: '🖼️' },
     { key: 'locationZone', label: 'Location / Zone', placeholder: 'e.g. Zone B – Level 3', icon: '📍' },
     { key: 'contractor', label: 'Contractor', placeholder: 'e.g. XYZ Contracting LLC', icon: '🏢', toggleKey: 'includeContractor' },
     { key: 'consultant', label: 'Consultant', placeholder: 'e.g. AECOM Middle East', icon: '📐', toggleKey: 'includeConsultant' },
@@ -35,6 +36,13 @@ export default function ProjectSettingsPanel({ isOpen, onClose }) {
             setSaved(false);
             onClose();
         }, 900);
+    };
+
+    const handleImageUpload = (key, file) => {
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (e) => handleChange(key, e.target.result);
+        reader.readAsDataURL(file);
     };
 
     const handleReset = () => {
@@ -106,14 +114,38 @@ export default function ProjectSettingsPanel({ isOpen, onClose }) {
                                         </button>
                                     )}
                                 </div>
-                                <input
-                                    type={type || 'text'}
-                                    className={styles.fieldInput}
-                                    value={local[key] || ''}
-                                    onChange={e => handleChange(key, e.target.value)}
-                                    placeholder={placeholder}
-                                    disabled={isToggledOff}
-                                />
+                                {type === 'image' ? (
+                                    <div className={styles.imageUploadWrapper}>
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            className={styles.imageInput}
+                                            onChange={e => handleImageUpload(key, e.target.files[0])}
+                                            disabled={isToggledOff}
+                                        />
+                                        {local[key] && (
+                                            <div className={styles.imagePreview}>
+                                                <img src={local[key]} alt="Preview" />
+                                                <button
+                                                    type="button"
+                                                    className={styles.removeImageBtn}
+                                                    onClick={() => handleChange(key, '')}
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <input
+                                        type={type || 'text'}
+                                        className={styles.fieldInput}
+                                        value={local[key] || ''}
+                                        onChange={e => handleChange(key, e.target.value)}
+                                        placeholder={placeholder}
+                                        disabled={isToggledOff}
+                                    />
+                                )}
                             </div>
                         );
                     })}

@@ -1120,6 +1120,16 @@ function TableViewer({ data }) {
                     } catch (e) { }
                 }
 
+                if (project.clientLogo) {
+                    try {
+                        const cdl = await getImageData(project.clientLogo, { format: 'image/png', maxWidth: 400 });
+                        if (cdl) {
+                            const cfit = calcFitSize(cdl.width, cdl.height, 32, 12);
+                            doc.addImage(cdl.dataUrl, 'PNG', pageWidth - 10 - cfit.w, 5, cfit.w, cfit.h);
+                        }
+                    } catch (e) { }
+                }
+
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
@@ -1141,10 +1151,15 @@ function TableViewer({ data }) {
                 doc.setFontSize(7.5);
                 doc.setTextColor(...colors.text);
 
+                const pRow3 = [];
+                if (project.includeContractor !== false) pRow3.push('Contractor:', project.contractor || '—');
+                if (project.includeConsultant !== false) pRow3.push('Consultant:', project.consultant || '—');
+                while (pRow3.length < 4) pRow3.push('', '');
+
                 const pRows = [
                     ['Project:', project.projectName || '—', 'Client:', project.clientName || '—'],
                     ['Project No:', project.projectNumber || '—', 'Location / Zone:', project.locationZone || '—'],
-                    ['Contractor:', project.includeContractor === false ? 'N/A' : (project.contractor || '—'), 'Consultant:', project.includeConsultant === false ? 'N/A' : (project.consultant || '—')],
+                    pRow3,
                     ['Site Engineer:', project.siteEngineer || '—', 'Issue Date:', project.issueDate || today],
                 ];
 
@@ -1236,45 +1251,65 @@ function TableViewer({ data }) {
                     columnStyles: { 0: { cellWidth: 48, fontStyle: 'bold' } }
                 });
 
-                // ── INSPECTION CHECKLIST ──
-                const clY = doc.lastAutoTable.finalY + 4;
-                doc.setFillColor(...colors.primary);
-                doc.rect(8, clY, pageWidth - 16, 6.5, 'F');
-                doc.setTextColor(...colors.white);
-                doc.setFontSize(8);
+                // ── ORIGINATOR'S INFORMATION ──
+                const clY = doc.lastAutoTable.finalY + 3;
+                doc.setDrawColor(...colors.border);
+                doc.setFillColor(...colors.lightBg);
+                doc.rect(8, clY, pageWidth - 16, 6, 'FD');
+                doc.setTextColor(...colors.text);
+                doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text('INSPECTION CHECKLIST', pageWidth / 2, clY + 4.5, { align: 'center' });
-
-                const checkItems = [
-                    'Dimensions as per specifications',
-                    'Material grade/quality verified',
-                    'Finish / color matches approval',
-                    'Quantity matches BOQ',
-                    'No visible damage / defects',
-                    'Certificates / test reports attached',
-                ];
+                doc.text("ORIGINATOR'S INFORMATION", 12, clY + 4.2);
 
                 autoTable(doc, {
-                    startY: clY + 6.5,
+                    startY: clY + 6,
                     margin: { left: 8, right: 8 },
-                    head: [['Inspection Item', 'Yes', 'No', 'N/A', 'Comments']],
-                    body: checkItems.map(item => [item, '☐', '☐', '☐', '']),
+                    head: [['Name', 'Designation', 'Signature']],
+                    body: [['', '', '']],
                     theme: 'grid',
-                    styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
-                    headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
-                    alternateRowStyles: { fillColor: [240, 249, 255] },
-                    columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 12, halign: 'center' }, 3: { cellWidth: 12, halign: 'center' }, 4: { cellWidth: 45 } }
+                    styles: { fontSize: 7.5, cellPadding: 4, textColor: colors.text, font: arabicLoaded ? 'Almarai' : 'helvetica' },
+                    headStyles: { fillColor: [248, 250, 252], textColor: colors.text, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border },
+                    bodyStyles: { minCellHeight: 12 },
+                    columnStyles: { 0: { cellWidth: 55 }, 1: { cellWidth: 55 }, 2: { cellWidth: 'auto' } }
                 });
 
-                // ── SIGNATURES ──
-                const sigY = doc.lastAutoTable.finalY + 4;
+                // ── COMMENTS ──
+                const comY = doc.lastAutoTable.finalY;
+                doc.setFillColor(...colors.lightBg);
+                doc.rect(8, comY, pageWidth - 16, 6, 'FD');
+                doc.setFontSize(7.5);
+                doc.setFont('helvetica', 'bold');
+                doc.text("COMMENTS:", 12, comY + 4.2);
+
+                // Comment box white space
+                doc.setFillColor(255, 255, 255);
+                doc.rect(8, comY + 6, pageWidth - 16, 17, 'FD');
+
+                // Approvals checkboxes 
+                const appY = comY + 23;
+                doc.setFillColor(255, 255, 255);
+                doc.rect(8, appY, pageWidth - 16, 7, 'FD');
+                doc.setFontSize(7);
+                doc.setFont('helvetica', 'bold');
+
+                doc.rect(30, appY + 2.5, 2, 2);
+                doc.text('A. Approved', 34, appY + 4.5);
+
+                doc.rect(85, appY + 2.5, 2, 2);
+                doc.text('B. Approved as Noted', 89, appY + 4.5);
+
+                doc.rect(145, appY + 2.5, 2, 2);
+                doc.text('C. Revise and Resubmit', 149, appY + 4.5);
+
+                // ── REVIEWED AND APPROVED BY ──
+                const sigY = appY + 7 + 3;
                 if (sigY + 22 < pageHeight - 8) {
                     doc.setFillColor(...colors.primary);
                     doc.rect(8, sigY, pageWidth - 16, 6, 'F');
                     doc.setTextColor(...colors.white);
                     doc.setFontSize(8);
                     doc.setFont('helvetica', 'bold');
-                    doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.2, { align: 'center' });
+                    doc.text('REVIEWED AND APPROVED BY', pageWidth / 2, sigY + 4.2, { align: 'center' });
 
                     const sigParties = [
                         { name: 'Submitted By\n(Contractor)', keep: project.includeContractor !== false },
@@ -1371,6 +1406,16 @@ function TableViewer({ data }) {
                     } catch (e) { }
                 }
 
+                if (project.clientLogo) {
+                    try {
+                        const cdl = await getImageData(project.clientLogo, { format: 'image/png', maxWidth: 400 });
+                        if (cdl) {
+                            const cfit = calcFitSize(cdl.width, cdl.height, 32, 12);
+                            doc.addImage(cdl.dataUrl, 'PNG', pageWidth - 10 - cfit.w, 5, cfit.w, cfit.h);
+                        }
+                    } catch (e) { }
+                }
+
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
@@ -1392,10 +1437,15 @@ function TableViewer({ data }) {
                 doc.setFontSize(7.5);
                 doc.setTextColor(...colors.text);
 
+                const pRow3 = [];
+                if (project.includeContractor !== false) pRow3.push('Contractor:', project.contractor || '—');
+                if (project.includeConsultant !== false) pRow3.push('Consultant:', project.consultant || '—');
+                while (pRow3.length < 4) pRow3.push('', '');
+
                 const pRows = [
                     ['Project:', project.projectName || '—', 'Client:', project.clientName || '—'],
                     ['Project No:', project.projectNumber || '—', 'Location / Zone:', project.locationZone || '—'],
-                    ['Contractor:', project.includeContractor === false ? 'N/A' : (project.contractor || '—'), 'Consultant:', project.includeConsultant === false ? 'N/A' : (project.consultant || '—')],
+                    pRow3,
                     ['Site Engineer:', project.siteEngineer || '—', 'Inspection Date:', project.issueDate || today],
                 ];
 
@@ -1487,45 +1537,65 @@ function TableViewer({ data }) {
                     columnStyles: { 0: { cellWidth: 48, fontStyle: 'bold' } }
                 });
 
-                // ── WORK CHECKLIST ──
-                const clY = doc.lastAutoTable.finalY + 4;
-                doc.setFillColor(...colors.primary);
-                doc.rect(8, clY, pageWidth - 16, 6.5, 'F');
-                doc.setTextColor(...colors.white);
-                doc.setFontSize(8);
+                // ── ORIGINATOR'S INFORMATION ──
+                const clY = doc.lastAutoTable.finalY + 3;
+                doc.setDrawColor(...colors.border);
+                doc.setFillColor(...colors.lightBg);
+                doc.rect(8, clY, pageWidth - 16, 6, 'FD');
+                doc.setTextColor(...colors.text);
+                doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text('WORK INSPECTION CHECKLIST', pageWidth / 2, clY + 4.5, { align: 'center' });
-
-                const checkItems = [
-                    'Work area ready and accessible',
-                    'Shop drawings / IFC issued & approved',
-                    'Materials on site and approved',
-                    'Previous work inspection passed',
-                    'Works conform to specifications',
-                    'Safety measures in place',
-                ];
+                doc.text("ORIGINATOR'S INFORMATION", 12, clY + 4.2);
 
                 autoTable(doc, {
-                    startY: clY + 6.5,
+                    startY: clY + 6,
                     margin: { left: 8, right: 8 },
-                    head: [['Inspection Item', 'Yes', 'No', 'N/A', 'Comments']],
-                    body: checkItems.map(item => [item, '☐', '☐', '☐', '']),
+                    head: [['Name', 'Designation', 'Signature']],
+                    body: [['', '', '']],
                     theme: 'grid',
-                    styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
-                    headStyles: { fillColor: [5, 46, 22], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
-                    alternateRowStyles: { fillColor: colors.lightBg },
-                    columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 12, halign: 'center' }, 3: { cellWidth: 12, halign: 'center' }, 4: { cellWidth: 45 } }
+                    styles: { fontSize: 7.5, cellPadding: 4, textColor: colors.text, font: arabicLoaded ? 'Almarai' : 'helvetica' },
+                    headStyles: { fillColor: [248, 250, 252], textColor: colors.text, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border },
+                    bodyStyles: { minCellHeight: 12 },
+                    columnStyles: { 0: { cellWidth: 55 }, 1: { cellWidth: 55 }, 2: { cellWidth: 'auto' } }
                 });
 
-                // ── SIGNATURES ──
-                const sigY = doc.lastAutoTable.finalY + 4;
+                // ── COMMENTS ──
+                const comY = doc.lastAutoTable.finalY;
+                doc.setFillColor(...colors.lightBg);
+                doc.rect(8, comY, pageWidth - 16, 6, 'FD');
+                doc.setFontSize(7.5);
+                doc.setFont('helvetica', 'bold');
+                doc.text("COMMENTS:", 12, comY + 4.2);
+
+                // Comment box white space
+                doc.setFillColor(255, 255, 255);
+                doc.rect(8, comY + 6, pageWidth - 16, 17, 'FD');
+
+                // Approvals checkboxes 
+                const appY = comY + 23;
+                doc.setFillColor(255, 255, 255);
+                doc.rect(8, appY, pageWidth - 16, 7, 'FD');
+                doc.setFontSize(7);
+                doc.setFont('helvetica', 'bold');
+
+                doc.rect(30, appY + 2.5, 2, 2);
+                doc.text('A. Approved', 34, appY + 4.5);
+
+                doc.rect(85, appY + 2.5, 2, 2);
+                doc.text('B. Approved as Noted', 89, appY + 4.5);
+
+                doc.rect(145, appY + 2.5, 2, 2);
+                doc.text('C. Revise and Resubmit', 149, appY + 4.5);
+
+                // ── REVIEWED AND APPROVED BY ──
+                const sigY = appY + 7 + 3;
                 if (sigY + 22 < pageHeight - 8) {
                     doc.setFillColor(...colors.primary);
                     doc.rect(8, sigY, pageWidth - 16, 6, 'F');
                     doc.setTextColor(...colors.white);
                     doc.setFontSize(8);
                     doc.setFont('helvetica', 'bold');
-                    doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.2, { align: 'center' });
+                    doc.text('REVIEWED AND APPROVED BY', pageWidth / 2, sigY + 4.2, { align: 'center' });
 
                     const sigParties = [
                         { name: 'Requested By\n(Contractor)', keep: project.includeContractor !== false },
@@ -1607,6 +1677,16 @@ function TableViewer({ data }) {
             } catch (e) { }
         }
 
+        if (project.clientLogo) {
+            try {
+                const cdl = await getImageData(project.clientLogo, { format: 'image/png', maxWidth: 400 });
+                if (cdl) {
+                    const cfit = calcFitSize(cdl.width, cdl.height, 35, 15);
+                    doc.addImage(cdl.dataUrl, 'PNG', pageWidth - 10 - cfit.w, 7, cfit.w, cfit.h);
+                }
+            } catch (e) { }
+        }
+
         doc.setTextColor(...colors.white);
         doc.setFontSize(18);
         doc.setFont('helvetica', 'bold');
@@ -1628,10 +1708,15 @@ function TableViewer({ data }) {
         doc.setFontSize(8);
         doc.setTextColor(...colors.text);
 
+        const pRow3 = [];
+        if (project.includeContractor !== false) pRow3.push('Contractor:', project.contractor || '—');
+        if (project.includeConsultant !== false) pRow3.push('Consultant:', project.consultant || '—');
+        while (pRow3.length < 4) pRow3.push('', '');
+
         const pRows = [
             ['Project Name:', project.projectName || '—', 'Project No:', project.projectNumber || '—'],
             ['Client / Owner:', project.clientName || '—', 'Location:', project.locationZone || '—'],
-            ['Contractor:', project.includeContractor === false ? 'N/A' : (project.contractor || '—'), 'Consultant:', project.includeConsultant === false ? 'N/A' : (project.consultant || '—')],
+            pRow3,
             ['Site Engineer:', project.siteEngineer || '—', 'Delivery Date:', today],
         ];
 
