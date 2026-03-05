@@ -1130,14 +1130,14 @@ function TableViewer({ data }) {
                 doc.text(`Ref: ${mirRef}   |   Item ${String(itemNumber).padStart(3, '0')}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
 
                 // ── PROJECT INFO BOX ──
-                const pY = 28;
+                const pY = 25;
                 doc.setFillColor(...colors.lightBg);
                 doc.setDrawColor(...colors.border);
                 doc.setLineWidth(0.3);
-                doc.roundedRect(8, pY, pageWidth - 16, 26, 2, 2, 'FD');
+                doc.roundedRect(8, pY, pageWidth - 16, 21, 2, 2, 'FD');
 
                 const leftCol = 12, rightCol = pageWidth / 2 + 4;
-                const rowH = 5.5;
+                const rowH = 4.5;
                 doc.setFontSize(7.5);
                 doc.setTextColor(...colors.text);
 
@@ -1149,7 +1149,7 @@ function TableViewer({ data }) {
                 ];
 
                 pRows.forEach((r, i) => {
-                    const y = pY + 7 + i * rowH;
+                    const y = pY + 5.5 + i * rowH;
                     doc.setFont('helvetica', 'bold'); doc.text(r[0], leftCol, y);
                     doc.setFont('helvetica', 'normal'); doc.text(processText(r[1]), leftCol + 26, y);
                     doc.setFont('helvetica', 'bold'); doc.text(r[2], rightCol, y);
@@ -1163,16 +1163,16 @@ function TableViewer({ data }) {
                 const uom = uomIdx > -1 ? row.cells[uomIdx].value : 'No.';
                 const sn = snIdx > -1 ? row.cells[snIdx].value : String(itemNumber);
 
-                let contentY = 58;
+                let contentY = 49;
 
                 // Item title band
                 doc.setFillColor(...colors.accent);
-                doc.roundedRect(8, contentY, pageWidth - 16, 8, 1, 1, 'F');
+                doc.roundedRect(8, contentY, pageWidth - 16, 7, 1, 1, 'F');
                 doc.setTextColor(...colors.white);
-                doc.setFontSize(9);
+                doc.setFontSize(8.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text(`ITEM ${String(sn).padStart(3, '0')} — MATERIAL INSPECTION`, 12, contentY + 5.5);
-                contentY += 12;
+                doc.text(`ITEM ${String(sn).padStart(3, '0')} — MATERIAL INSPECTION`, 12, contentY + 4.8);
+                contentY += 10;
 
                 // ── IMAGES ──
                 const imageCell = row.cells.find(c => c.images?.length > 0 || c.image);
@@ -1189,16 +1189,16 @@ function TableViewer({ data }) {
 
                 if (imageResults.length > 0) {
                     const imgAreaW = pageWidth - 16;
-                    const imgAreaH = imageResults.length <= 2 ? 50 : 80;
+                    const imgAreaH = imageResults.length <= 2 ? 40 : 64;
                     doc.setFillColor(252, 252, 252);
                     doc.setDrawColor(...colors.border);
                     doc.roundedRect(8, contentY, imgAreaW, imgAreaH, 2, 2, 'FD');
 
                     if (imageResults.length === 1) {
                         const img = imageResults[0];
-                        const fit = calcFitSize(img.width, img.height, 80, 44);
+                        const fit = calcFitSize(img.width, img.height, 80, 36);
                         const ix = (pageWidth - fit.w) / 2;
-                        doc.addImage(img.dataUrl, 'JPEG', ix, contentY + 3, fit.w, fit.h, '', 'FAST');
+                        doc.addImage(img.dataUrl, 'JPEG', ix, contentY + 2, fit.w, fit.h, '', 'FAST');
                     } else {
                         const cols = 2;
                         const cW = (imgAreaW - 12) / cols;
@@ -1212,7 +1212,7 @@ function TableViewer({ data }) {
                             doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, '', 'FAST');
                         });
                     }
-                    contentY += imgAreaH + 6;
+                    contentY += imgAreaH + 4;
                 }
 
                 // ── SPECIFICATION TABLE ──
@@ -1230,20 +1230,20 @@ function TableViewer({ data }) {
                         [processText('Remarks'), ''],
                     ],
                     theme: 'striped',
-                    styles: { fontSize: 8.5, cellPadding: 3, textColor: colors.text, overflow: 'linebreak', font: arabicLoaded ? 'Almarai' : 'helvetica' },
-                    headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 8.5 },
+                    styles: { fontSize: 8, cellPadding: 2.5, textColor: colors.text, overflow: 'linebreak', font: arabicLoaded ? 'Almarai' : 'helvetica' },
+                    headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
                     alternateRowStyles: { fillColor: colors.lightBg },
                     columnStyles: { 0: { cellWidth: 48, fontStyle: 'bold' } }
                 });
 
                 // ── INSPECTION CHECKLIST ──
-                const clY = doc.lastAutoTable.finalY + 6;
+                const clY = doc.lastAutoTable.finalY + 4;
                 doc.setFillColor(...colors.primary);
-                doc.rect(8, clY, pageWidth - 16, 7, 'F');
+                doc.rect(8, clY, pageWidth - 16, 6.5, 'F');
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(8);
                 doc.setFont('helvetica', 'bold');
-                doc.text('INSPECTION CHECKLIST', pageWidth / 2, clY + 4.8, { align: 'center' });
+                doc.text('INSPECTION CHECKLIST', pageWidth / 2, clY + 4.5, { align: 'center' });
 
                 const checkItems = [
                     'Dimensions as per specifications',
@@ -1255,28 +1255,28 @@ function TableViewer({ data }) {
                 ];
 
                 autoTable(doc, {
-                    startY: clY + 7,
+                    startY: clY + 6.5,
                     margin: { left: 8, right: 8 },
                     head: [['Inspection Item', 'Yes', 'No', 'N/A', 'Comments']],
                     body: checkItems.map(item => [item, '☐', '☐', '☐', '']),
                     theme: 'grid',
-                    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
-                    headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+                    styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
+                    headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
                     alternateRowStyles: { fillColor: [240, 249, 255] },
                     columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 12, halign: 'center' }, 3: { cellWidth: 12, halign: 'center' }, 4: { cellWidth: 45 } }
                 });
 
                 // ── SIGNATURES ──
-                const sigY = doc.lastAutoTable.finalY + 6;
-                if (sigY + 28 < pageHeight - 8) {
+                const sigY = doc.lastAutoTable.finalY + 4;
+                if (sigY + 22 < pageHeight - 8) {
                     doc.setFillColor(...colors.primary);
-                    doc.rect(8, sigY, pageWidth - 16, 7, 'F');
+                    doc.rect(8, sigY, pageWidth - 16, 6, 'F');
                     doc.setTextColor(...colors.white);
                     doc.setFontSize(8);
                     doc.setFont('helvetica', 'bold');
-                    doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.8, { align: 'center' });
+                    doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.2, { align: 'center' });
 
-                    const boxW = 54, boxH = 22, boxY = sigY + 9;
+                    const boxW = 54, boxH = 19, boxY = sigY + 8;
                     const gap = (pageWidth - 16 - boxW * 3) / 2;
                     ['Submitted By\n(Contractor)', 'Checked By\n(Consultant)', 'Approved By\n(Client)'].forEach((name, i) => {
                         const x = 8 + i * (boxW + gap);
@@ -1285,7 +1285,7 @@ function TableViewer({ data }) {
                         doc.setLineWidth(0.3);
                         doc.rect(x, boxY, boxW, boxH, 'FD');
                         doc.setFillColor(...colors.accent);
-                        doc.rect(x, boxY, boxW, 6, 'F');
+                        doc.rect(x, boxY, boxW, 5.5, 'F');
                         doc.setTextColor(...colors.white);
                         doc.setFontSize(6.5);
                         doc.setFont('helvetica', 'bold');
@@ -1293,7 +1293,7 @@ function TableViewer({ data }) {
                         doc.setTextColor(...colors.text);
                         doc.setFontSize(6);
                         doc.setFont('helvetica', 'normal');
-                        doc.text(name.split('\n')[1] || '', x + boxW / 2, boxY + 9, { align: 'center' });
+                        doc.text(name.split('\n')[1] || '', x + boxW / 2, boxY + 8.5, { align: 'center' });
                         doc.text('Date: __________', x + boxW / 2, boxY + boxH - 2, { align: 'center' });
                     });
                 }
@@ -1374,14 +1374,14 @@ function TableViewer({ data }) {
                 doc.text(`Ref: ${wirRef}   |   Item ${String(itemNumber).padStart(3, '0')}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
 
                 // ── PROJECT INFO ──
-                const pY = 28;
+                const pY = 25;
                 doc.setFillColor(...colors.lightBg);
                 doc.setDrawColor(...colors.border);
                 doc.setLineWidth(0.3);
-                doc.roundedRect(8, pY, pageWidth - 16, 26, 2, 2, 'FD');
+                doc.roundedRect(8, pY, pageWidth - 16, 21, 2, 2, 'FD');
 
                 const leftCol = 12, rightCol = pageWidth / 2 + 4;
-                const rowH = 5.5;
+                const rowH = 4.5;
                 doc.setFontSize(7.5);
                 doc.setTextColor(...colors.text);
 
@@ -1393,7 +1393,7 @@ function TableViewer({ data }) {
                 ];
 
                 pRows.forEach((r, i) => {
-                    const y = pY + 7 + i * rowH;
+                    const y = pY + 5.5 + i * rowH;
                     doc.setFont('helvetica', 'bold'); doc.text(r[0], leftCol, y);
                     doc.setFont('helvetica', 'normal'); doc.text(processText(r[1]), leftCol + 26, y);
                     doc.setFont('helvetica', 'bold'); doc.text(r[2], rightCol, y);
@@ -1407,16 +1407,16 @@ function TableViewer({ data }) {
                 const uom = uomIdx > -1 ? row.cells[uomIdx].value : 'No.';
                 const sn = snIdx > -1 ? row.cells[snIdx].value : String(itemNumber);
 
-                let contentY = 58;
+                let contentY = 49;
 
                 // Item title band
                 doc.setFillColor(...colors.accent);
-                doc.roundedRect(8, contentY, pageWidth - 16, 8, 1, 1, 'F');
+                doc.roundedRect(8, contentY, pageWidth - 16, 7, 1, 1, 'F');
                 doc.setTextColor(...colors.white);
-                doc.setFontSize(9);
+                doc.setFontSize(8.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text(`ITEM ${String(sn).padStart(3, '0')} — WORK INSPECTION`, 12, contentY + 5.5);
-                contentY += 12;
+                doc.text(`ITEM ${String(sn).padStart(3, '0')} — WORK INSPECTION`, 12, contentY + 4.8);
+                contentY += 10;
 
                 // ── IMAGES ──
                 const imageCell = row.cells.find(c => c.images?.length > 0 || c.image);
@@ -1433,16 +1433,16 @@ function TableViewer({ data }) {
 
                 if (imageResults.length > 0) {
                     const imgAreaW = pageWidth - 16;
-                    const imgAreaH = imageResults.length <= 2 ? 50 : 80;
+                    const imgAreaH = imageResults.length <= 2 ? 40 : 64;
                     doc.setFillColor(252, 252, 252);
                     doc.setDrawColor(...colors.border);
                     doc.roundedRect(8, contentY, imgAreaW, imgAreaH, 2, 2, 'FD');
 
                     if (imageResults.length === 1) {
                         const img = imageResults[0];
-                        const fit = calcFitSize(img.width, img.height, 80, 44);
+                        const fit = calcFitSize(img.width, img.height, 80, 36);
                         const ix = (pageWidth - fit.w) / 2;
-                        doc.addImage(img.dataUrl, 'JPEG', ix, contentY + 3, fit.w, fit.h, '', 'FAST');
+                        doc.addImage(img.dataUrl, 'JPEG', ix, contentY + 2, fit.w, fit.h, '', 'FAST');
                     } else {
                         const cols = 2;
                         const cW = (imgAreaW - 12) / cols;
@@ -1456,7 +1456,7 @@ function TableViewer({ data }) {
                             doc.addImage(img.dataUrl, 'JPEG', x, y, fit.w, fit.h, '', 'FAST');
                         });
                     }
-                    contentY += imgAreaH + 6;
+                    contentY += imgAreaH + 4;
                 }
 
                 // ── SPECIFICATION TABLE ──
@@ -1474,20 +1474,20 @@ function TableViewer({ data }) {
                         [processText('Remarks'), ''],
                     ],
                     theme: 'striped',
-                    styles: { fontSize: 8.5, cellPadding: 3, textColor: colors.text, overflow: 'linebreak', font: arabicLoaded ? 'Almarai' : 'helvetica' },
-                    headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 8.5 },
+                    styles: { fontSize: 8, cellPadding: 2.5, textColor: colors.text, overflow: 'linebreak', font: arabicLoaded ? 'Almarai' : 'helvetica' },
+                    headStyles: { fillColor: colors.accent, textColor: colors.white, fontStyle: 'bold', fontSize: 8 },
                     alternateRowStyles: { fillColor: colors.lightBg },
                     columnStyles: { 0: { cellWidth: 48, fontStyle: 'bold' } }
                 });
 
                 // ── WORK CHECKLIST ──
-                const clY = doc.lastAutoTable.finalY + 6;
+                const clY = doc.lastAutoTable.finalY + 4;
                 doc.setFillColor(...colors.primary);
-                doc.rect(8, clY, pageWidth - 16, 7, 'F');
+                doc.rect(8, clY, pageWidth - 16, 6.5, 'F');
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(8);
                 doc.setFont('helvetica', 'bold');
-                doc.text('WORK INSPECTION CHECKLIST', pageWidth / 2, clY + 4.8, { align: 'center' });
+                doc.text('WORK INSPECTION CHECKLIST', pageWidth / 2, clY + 4.5, { align: 'center' });
 
                 const checkItems = [
                     'Work area ready and accessible',
@@ -1499,28 +1499,28 @@ function TableViewer({ data }) {
                 ];
 
                 autoTable(doc, {
-                    startY: clY + 7,
+                    startY: clY + 6.5,
                     margin: { left: 8, right: 8 },
                     head: [['Inspection Item', 'Yes', 'No', 'N/A', 'Comments']],
                     body: checkItems.map(item => [item, '☐', '☐', '☐', '']),
                     theme: 'grid',
-                    styles: { fontSize: 8, cellPadding: 2.5, overflow: 'linebreak' },
-                    headStyles: { fillColor: [5, 46, 22], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 8 },
+                    styles: { fontSize: 7.5, cellPadding: 2, overflow: 'linebreak' },
+                    headStyles: { fillColor: [5, 46, 22], textColor: [255, 255, 255], fontStyle: 'bold', fontSize: 7.5 },
                     alternateRowStyles: { fillColor: colors.lightBg },
                     columnStyles: { 0: { cellWidth: 'auto' }, 1: { cellWidth: 12, halign: 'center' }, 2: { cellWidth: 12, halign: 'center' }, 3: { cellWidth: 12, halign: 'center' }, 4: { cellWidth: 45 } }
                 });
 
                 // ── SIGNATURES ──
-                const sigY = doc.lastAutoTable.finalY + 6;
-                if (sigY + 28 < pageHeight - 8) {
+                const sigY = doc.lastAutoTable.finalY + 4;
+                if (sigY + 22 < pageHeight - 8) {
                     doc.setFillColor(...colors.primary);
-                    doc.rect(8, sigY, pageWidth - 16, 7, 'F');
+                    doc.rect(8, sigY, pageWidth - 16, 6, 'F');
                     doc.setTextColor(...colors.white);
                     doc.setFontSize(8);
                     doc.setFont('helvetica', 'bold');
-                    doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.8, { align: 'center' });
+                    doc.text('APPROVAL SIGNATURES', pageWidth / 2, sigY + 4.2, { align: 'center' });
 
-                    const boxW = 54, boxH = 22, boxY = sigY + 9;
+                    const boxW = 54, boxH = 19, boxY = sigY + 8;
                     const gap = (pageWidth - 16 - boxW * 3) / 2;
                     ['Requested By\n(Contractor)', 'Inspected By\n(Consultant)', 'Approved By\n(Client)'].forEach((name, i) => {
                         const x = 8 + i * (boxW + gap);
@@ -1529,7 +1529,7 @@ function TableViewer({ data }) {
                         doc.setLineWidth(0.3);
                         doc.rect(x, boxY, boxW, boxH, 'FD');
                         doc.setFillColor(...colors.accent);
-                        doc.rect(x, boxY, boxW, 6, 'F');
+                        doc.rect(x, boxY, boxW, 5.5, 'F');
                         doc.setTextColor(...colors.white);
                         doc.setFontSize(6.5);
                         doc.setFont('helvetica', 'bold');
@@ -1537,7 +1537,7 @@ function TableViewer({ data }) {
                         doc.setTextColor(...colors.text);
                         doc.setFontSize(6);
                         doc.setFont('helvetica', 'normal');
-                        doc.text(name.split('\n')[1] || '', x + boxW / 2, boxY + 9, { align: 'center' });
+                        doc.text(name.split('\n')[1] || '', x + boxW / 2, boxY + 8.5, { align: 'center' });
                         doc.text('Date: __________', x + boxW / 2, boxY + boxH - 2, { align: 'center' });
                     });
                 }
