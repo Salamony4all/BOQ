@@ -91,22 +91,45 @@ function AppContent({ onOpenSettings }) {
 
     try {
       if (useBlob) {
-        setStage('Uploading to Cloud (Large File)');
-        // Direct Client-Side Upload to Vercel Blob
-        const blob = await blobUpload(file.name, file, {
-          access: 'public',
-          handleUploadUrl: `${API_BASE}/api/upload/blob-token`,
-          onUploadProgress: (progressEvent) => {
-            setProgress(progressEvent.percentage * 0.5); // First 50% is upload
-          },
+        setStage('Uploading to Cloud (Free Tier Bypass)...');
+
+        // Direct Client-Side Upload to Free Temp Storage (Bypasses Vercel Blob Limits)
+        const fileUrl = await new Promise((resolve, reject) => {
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const xhr = new XMLHttpRequest();
+          xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+              setProgress((e.loaded / e.total) * 50); // First 50% is upload
+            }
+          });
+
+          xhr.addEventListener('load', () => {
+            if (xhr.status === 200 || xhr.status === 201) {
+              try {
+                const response = JSON.parse(xhr.responseText);
+                // Convert to direct download format
+                resolve(response.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/'));
+              } catch (e) {
+                reject(new Error('Failed to parse upload provider response'));
+              }
+            } else {
+              reject(new Error(`Cloud upload failed: ${xhr.status}`));
+            }
+          });
+
+          xhr.addEventListener('error', () => reject(new Error('Network error during cloud upload')));
+          xhr.open('POST', 'https://tmpfiles.org/api/v1/upload');
+          xhr.send(formData);
         });
 
         setStage('Processing Large File...');
-        // Now ask the server to process the URL
+        // Now ask the server to process the remote URL
         const res = await fetch(`${API_BASE}/api/process-blob`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: blob.url, sessionId })
+          body: JSON.stringify({ url: fileUrl, sessionId })
         });
 
         if (!res.ok) {
