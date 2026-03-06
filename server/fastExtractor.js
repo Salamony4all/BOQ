@@ -7,6 +7,8 @@ import AdmZip from 'adm-zip';
 import { promisify } from 'util';
 import xml2js from 'xml2js';
 import { fileURLToPath } from 'url';
+import fetch from 'node-fetch';
+import FormData from 'form-data';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -122,19 +124,29 @@ async function extractImagesAndMap(filePath, imagesDir, onBlobCreated = null) {
                 const fileName = path.basename(entry.entryName);
                 const data = entry.getData();
 
-                // Try Vercel Blob first (only if token is present)
-                if (process.env.BLOB_READ_WRITE_TOKEN) {
-                    try {
-                        const blob = await put(`boq/images/${timestamp}_${fileName}`, data, {
-                            access: 'public',
-                            addRandomSuffix: true,
-                        });
-                        savedImages[fileName] = blob.url;
-                        if (onBlobCreated) onBlobCreated(blob.url); // Track for cleanup
+                // Free Unlimited Temporary Storage Override
+                // Bypass Vercel Blob Hobby limits unconditionally while preserving cloud stability
+                try {
+                    const formData = new FormData();
+                    formData.append('file', data, { filename: `${timestamp}_${fileName}`, contentType: 'image/jpeg' });
+
+                    const response = await fetch('https://tmpfiles.org/api/v1/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    if (response.ok) {
+                        const json = await response.json();
+                        // tmpfiles.org returns 'tmpfiles.org/123/file.jpg', convert to direct download path '/dl/'
+                        const directUrl = json.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+                        savedImages[fileName] = directUrl;
+                        if (onBlobCreated) onBlobCreated(directUrl);
                         return;
-                    } catch (err) {
-                        console.error(`Vercel Blob upload failed for ${fileName}:`, err.message);
+                    } else {
+                        throw new Error(`Cloud image upload failed with status: ${response.status}`);
                     }
+                } catch (err) {
+                    console.error(`Free Tier storage bypass failed for ${fileName}, falling back to local:`, err.message);
                 }
 
                 // Local fallback
