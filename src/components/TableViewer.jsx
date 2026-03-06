@@ -1107,6 +1107,7 @@ function TableViewer({ data }) {
                 let snRaw = snIdx > -1 ? String(row.cells[snIdx].value || '') : '';
                 let rawTitle = codeRaw.trim() || snRaw.trim() || String(itemNumber).padStart(3, '0');
                 let displayTitle = rawTitle.replace(/\n+/g, ', ').replace(/\s{2,}/g, ' ').trim();
+                const rowMirRef = `${mirRef}-${String(itemNumber).padStart(3, '0')}`;
 
                 // ── HEADER BAND ──
                 doc.setFillColor(...colors.primary);
@@ -1143,7 +1144,7 @@ function TableViewer({ data }) {
 
                 doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'normal');
-                doc.text(`Ref: ${mirRef}   |   Item ${displayTitle}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
+                doc.text(`Ref: ${rowMirRef}   |   Item ${displayTitle}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
 
                 // ── PROJECT INFO BOX ──
                 const pY = 25;
@@ -1393,7 +1394,7 @@ function TableViewer({ data }) {
                 doc.rect(0, pageHeight - 8, pageWidth, 8, 'F');
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(6);
-                doc.text(`BOQFlow | Material Inspection Report | ${mirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+                doc.text(`BOQFlow | Material Inspection Report | ${rowMirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
 
                 itemNumber++;
             }
@@ -1442,6 +1443,7 @@ function TableViewer({ data }) {
                 let snRaw = snIdx > -1 ? String(row.cells[snIdx].value || '') : '';
                 let rawTitle = codeRaw.trim() || snRaw.trim() || String(itemNumber).padStart(3, '0');
                 let displayTitle = rawTitle.replace(/\n+/g, ', ').replace(/\s{2,}/g, ' ').trim();
+                const rowWirRef = `${wirRef}-${String(itemNumber).padStart(3, '0')}`;
 
                 // ── HEADER ──
                 doc.setFillColor(...colors.primary);
@@ -1477,7 +1479,7 @@ function TableViewer({ data }) {
 
                 doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'normal');
-                doc.text(`Ref: ${wirRef}   |   Item ${displayTitle}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
+                doc.text(`Ref: ${rowWirRef}   |   Item ${displayTitle}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
 
                 // ── PROJECT INFO ──
                 const pY = 25;
@@ -1727,7 +1729,7 @@ function TableViewer({ data }) {
                 doc.rect(0, pageHeight - 8, pageWidth, 8, 'F');
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(6);
-                doc.text(`BOQFlow | Work Inspection Request | ${wirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+                doc.text(`BOQFlow | Work Inspection Request | ${rowWirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
 
                 itemNumber++;
             }
