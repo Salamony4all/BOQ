@@ -1190,60 +1190,83 @@ function TableViewer({ data }) {
                 contentY += 10;
 
                 // ── IMAGES ──
-                const imageResults = [];
+                const imageGroups = [];
                 for (let idx = 0; idx < row.cells.length; idx++) {
                     const c = row.cells[idx];
                     const colName = header[idx] || '';
                     if (c.images?.length > 0 || c.image) {
                         const imgs = c.images || [c.image];
+                        const groupImgs = [];
                         for (const img of imgs) {
                             if (img?.url) {
                                 try {
                                     const ir = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
-                                    if (ir) {
-                                        ir.title = colName;
-                                        imageResults.push(ir);
-                                    }
+                                    if (ir) groupImgs.push(ir);
                                 } catch (e) { }
                             }
+                        }
+                        if (groupImgs.length > 0) {
+                            imageGroups.push({ title: colName, images: groupImgs });
                         }
                     }
                 }
 
-                if (imageResults.length > 0) {
-                    const maxImgs = 6;
-                    const imgsToDraw = imageResults.slice(0, maxImgs);
+                if (imageGroups.length > 0) {
                     const imgAreaW = pageWidth - 16;
-                    const imgAreaH = 55;
+                    const imgAreaH = 65;
+                    const gap = 4;
+                    const groupW = (imgAreaW - (imageGroups.length - 1) * gap) / imageGroups.length;
 
-                    doc.setFillColor(252, 252, 252);
-                    doc.setDrawColor(...colors.border);
-                    doc.roundedRect(8, contentY, imgAreaW, imgAreaH, 2, 2, 'FD');
+                    imageGroups.forEach((group, gIdx) => {
+                        const gX = 8 + gIdx * (groupW + gap);
+                        const gY = contentY;
 
-                    const cols = imgsToDraw.length <= 2 ? imgsToDraw.length : (imgsToDraw.length <= 4 ? 2 : 3);
-                    const rows2 = Math.ceil(imgsToDraw.length / cols);
+                        doc.setFillColor(252, 252, 252);
+                        doc.setDrawColor(...colors.border);
+                        doc.roundedRect(gX, gY, groupW, imgAreaH, 2, 2, 'FD');
 
-                    const cW = (imgAreaW - (cols + 1) * 3) / cols;
-                    const cH = (imgAreaH - (rows2 + 1) * 3) / rows2;
-
-                    imgsToDraw.forEach((img, idx) => {
-                        const c = idx % cols, r = Math.floor(idx / cols);
-                        const titleH = 4.5;
-                        const fit = calcFitSize(img.width, img.height, cW - 2, cH - titleH - 1);
-
-                        const cellX = 8 + 3 + c * (cW + 3);
-                        const cellY = contentY + 3 + r * (cH + 3);
-
-                        const imgX = cellX + (cW - fit.w) / 2;
-                        const imgY = cellY + titleH;
-
-                        doc.setFontSize(6.5);
+                        // Title for the group
+                        doc.setFontSize(7.5);
                         doc.setTextColor(80, 80, 80);
                         doc.setFont('helvetica', 'bold');
-                        const titleText = doc.splitTextToSize(processText(String(img.title || '').toUpperCase()), cW - 2);
-                        doc.text(titleText[0], cellX + cW / 2, cellY + 2.5, { align: 'center' });
+                        const titleText = doc.splitTextToSize(processText(String(group.title || '').toUpperCase()), groupW - 4);
+                        doc.text(titleText[0], gX + groupW / 2, gY + 4.5, { align: 'center' });
 
-                        doc.addImage(img.dataUrl, 'JPEG', imgX, imgY, fit.w, fit.h, '', 'FAST');
+                        // Line under title
+                        doc.setDrawColor(...colors.border);
+                        doc.setLineWidth(0.3);
+                        doc.line(gX + 2, gY + 6, gX + groupW - 2, gY + 6);
+
+                        // Grid for images in this group
+                        const numImgs = group.images.length;
+                        let cols = 1, rows2 = 1;
+                        if (numImgs === 1) { cols = 1; rows2 = 1; }
+                        else if (numImgs === 2) { cols = 2; rows2 = 1; }
+                        else if (numImgs <= 4) { cols = 2; rows2 = 2; }
+                        else if (numImgs <= 6) { cols = 3; rows2 = 2; }
+                        else if (numImgs <= 9) { cols = 3; rows2 = 3; }
+                        else {
+                            cols = Math.ceil(Math.sqrt(numImgs));
+                            rows2 = Math.ceil(numImgs / cols);
+                        }
+
+                        const pad = 2;
+                        const availW = groupW - pad * 2;
+                        const availH = imgAreaH - 8 - pad * 2; // 8 is reserved for the head title area
+
+                        const cW = (availW - (cols - 1) * pad) / cols;
+                        const cH = (availH - (rows2 - 1) * pad) / rows2;
+
+                        group.images.forEach((img, iIdx) => {
+                            const c = iIdx % cols;
+                            const r = Math.floor(iIdx / cols);
+                            const fit = calcFitSize(img.width, img.height, cW, cH);
+
+                            const imgX = gX + pad + c * (cW + pad) + (cW - fit.w) / 2;
+                            const imgY = gY + 8 + pad + r * (cH + pad) + (cH - fit.h) / 2;
+
+                            doc.addImage(img.dataUrl, 'JPEG', imgX, imgY, fit.w, fit.h, '', 'FAST');
+                        });
                     });
 
                     contentY += imgAreaH + 4;
@@ -1495,60 +1518,83 @@ function TableViewer({ data }) {
                 contentY += 10;
 
                 // ── IMAGES ──
-                const imageResults = [];
+                const imageGroups = [];
                 for (let idx = 0; idx < row.cells.length; idx++) {
                     const c = row.cells[idx];
                     const colName = header[idx] || '';
                     if (c.images?.length > 0 || c.image) {
                         const imgs = c.images || [c.image];
+                        const groupImgs = [];
                         for (const img of imgs) {
                             if (img?.url) {
                                 try {
                                     const ir = await getImageData(getFullUrl(img.url), { maxWidth: 800, format: 'image/jpeg' });
-                                    if (ir) {
-                                        ir.title = colName;
-                                        imageResults.push(ir);
-                                    }
+                                    if (ir) groupImgs.push(ir);
                                 } catch (e) { }
                             }
+                        }
+                        if (groupImgs.length > 0) {
+                            imageGroups.push({ title: colName, images: groupImgs });
                         }
                     }
                 }
 
-                if (imageResults.length > 0) {
-                    const maxImgs = 6;
-                    const imgsToDraw = imageResults.slice(0, maxImgs);
+                if (imageGroups.length > 0) {
                     const imgAreaW = pageWidth - 16;
-                    const imgAreaH = 55;
+                    const imgAreaH = 65;
+                    const gap = 4;
+                    const groupW = (imgAreaW - (imageGroups.length - 1) * gap) / imageGroups.length;
 
-                    doc.setFillColor(252, 252, 252);
-                    doc.setDrawColor(...colors.border);
-                    doc.roundedRect(8, contentY, imgAreaW, imgAreaH, 2, 2, 'FD');
+                    imageGroups.forEach((group, gIdx) => {
+                        const gX = 8 + gIdx * (groupW + gap);
+                        const gY = contentY;
 
-                    const cols = imgsToDraw.length <= 2 ? imgsToDraw.length : (imgsToDraw.length <= 4 ? 2 : 3);
-                    const rows2 = Math.ceil(imgsToDraw.length / cols);
+                        doc.setFillColor(252, 252, 252);
+                        doc.setDrawColor(...colors.border);
+                        doc.roundedRect(gX, gY, groupW, imgAreaH, 2, 2, 'FD');
 
-                    const cW = (imgAreaW - (cols + 1) * 3) / cols;
-                    const cH = (imgAreaH - (rows2 + 1) * 3) / rows2;
-
-                    imgsToDraw.forEach((img, idx) => {
-                        const c = idx % cols, r = Math.floor(idx / cols);
-                        const titleH = 4.5;
-                        const fit = calcFitSize(img.width, img.height, cW - 2, cH - titleH - 1);
-
-                        const cellX = 8 + 3 + c * (cW + 3);
-                        const cellY = contentY + 3 + r * (cH + 3);
-
-                        const imgX = cellX + (cW - fit.w) / 2;
-                        const imgY = cellY + titleH;
-
-                        doc.setFontSize(6.5);
+                        // Title for the group
+                        doc.setFontSize(7.5);
                         doc.setTextColor(80, 80, 80);
                         doc.setFont('helvetica', 'bold');
-                        const titleText = doc.splitTextToSize(processText(String(img.title || '').toUpperCase()), cW - 2);
-                        doc.text(titleText[0], cellX + cW / 2, cellY + 2.5, { align: 'center' });
+                        const titleText = doc.splitTextToSize(processText(String(group.title || '').toUpperCase()), groupW - 4);
+                        doc.text(titleText[0], gX + groupW / 2, gY + 4.5, { align: 'center' });
 
-                        doc.addImage(img.dataUrl, 'JPEG', imgX, imgY, fit.w, fit.h, '', 'FAST');
+                        // Line under title
+                        doc.setDrawColor(...colors.border);
+                        doc.setLineWidth(0.3);
+                        doc.line(gX + 2, gY + 6, gX + groupW - 2, gY + 6);
+
+                        // Grid for images in this group
+                        const numImgs = group.images.length;
+                        let cols = 1, rows2 = 1;
+                        if (numImgs === 1) { cols = 1; rows2 = 1; }
+                        else if (numImgs === 2) { cols = 2; rows2 = 1; }
+                        else if (numImgs <= 4) { cols = 2; rows2 = 2; }
+                        else if (numImgs <= 6) { cols = 3; rows2 = 2; }
+                        else if (numImgs <= 9) { cols = 3; rows2 = 3; }
+                        else {
+                            cols = Math.ceil(Math.sqrt(numImgs));
+                            rows2 = Math.ceil(numImgs / cols);
+                        }
+
+                        const pad = 2;
+                        const availW = groupW - pad * 2;
+                        const availH = imgAreaH - 8 - pad * 2; // 8 is reserved for the head title area
+
+                        const cW = (availW - (cols - 1) * pad) / cols;
+                        const cH = (availH - (rows2 - 1) * pad) / rows2;
+
+                        group.images.forEach((img, iIdx) => {
+                            const c = iIdx % cols;
+                            const r = Math.floor(iIdx / cols);
+                            const fit = calcFitSize(img.width, img.height, cW, cH);
+
+                            const imgX = gX + pad + c * (cW + pad) + (cW - fit.w) / 2;
+                            const imgY = gY + 8 + pad + r * (cH + pad) + (cH - fit.h) / 2;
+
+                            doc.addImage(img.dataUrl, 'JPEG', imgX, imgY, fit.w, fit.h, '', 'FAST');
+                        });
                     });
 
                     contentY += imgAreaH + 4;
