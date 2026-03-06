@@ -127,23 +127,49 @@ async function extractImagesAndMap(filePath, imagesDir, onBlobCreated = null) {
                 // Free Unlimited Temporary Storage Override
                 // Bypass Vercel Blob Hobby limits unconditionally while preserving cloud stability
                 try {
-                    const formData = new FormData();
-                    formData.append('image', data.toString('base64'));
+                    let directUrl = null;
+                    const base64Str = data.toString('base64');
 
-                    const response = await axios.post('https://api.imgur.com/3/image', formData, {
-                        headers: {
-                            ...formData.getHeaders(),
-                            'Authorization': 'Client-ID 546c25a59c58ad7'
+                    // Provider 1: FreeImage.host (Highest rate limit for anonymous bulk uploads)
+                    try {
+                        const formData1 = new FormData();
+                        formData1.append('key', '6d207e02198a847aa98d0a2a901485a5');
+                        formData1.append('action', 'upload');
+                        formData1.append('source', base64Str);
+                        formData1.append('format', 'json');
+
+                        const res1 = await axios.post('https://freeimage.host/api/1/upload', formData1, {
+                            headers: formData1.getHeaders()
+                        });
+                        if (res1.status === 200 && res1.data && res1.data.image) directUrl = res1.data.image.url;
+                    } catch (e1) {
+                        console.warn(`[FastExtractor] Provider 1 (FreeImage) failed for ${fileName}, falling back...`);
+                    }
+
+                    // Provider 2: Imgur (Secondary fallback, strict 50/hr ceiling per IP)
+                    if (!directUrl) {
+                        try {
+                            const formData2 = new FormData();
+                            formData2.append('image', base64Str);
+
+                            const res2 = await axios.post('https://api.imgur.com/3/image', formData2, {
+                                headers: {
+                                    ...formData2.getHeaders(),
+                                    'Authorization': 'Client-ID 546c25a59c58ad7'
+                                }
+                            });
+                            if (res2.status === 200 || res2.status === 201) directUrl = res2.data.data.link;
+                        } catch (e2) {
+                            console.warn(`[FastExtractor] Provider 2 (Imgur) failed for ${fileName}, falling back...`);
                         }
-                    });
+                    }
 
-                    if (response.status === 200 || response.status === 201) {
-                        const directUrl = response.data.data.link;
+                    if (directUrl) {
                         savedImages[fileName] = directUrl;
                         if (onBlobCreated) onBlobCreated(directUrl);
                         return;
                     } else {
-                        throw new Error(`Cloud image upload failed with status: ${response.status}`);
+                        throw new Error(`All remote cloud backup providers failed`);
                     }
                 } catch (err) {
                     console.error(`Free Tier storage bypass failed for ${fileName}, falling back to local:`, err.message);
