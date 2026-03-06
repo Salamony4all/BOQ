@@ -1106,7 +1106,7 @@ function TableViewer({ data }) {
                 let codeRaw = codeIdx > -1 ? String(row.cells[codeIdx].value || '') : '';
                 let snRaw = snIdx > -1 ? String(row.cells[snIdx].value || '') : '';
                 let rawTitle = codeRaw.trim() || snRaw.trim() || String(itemNumber).padStart(3, '0');
-                let displayTitle = rawTitle.replace(/\n+/g, ' - ').replace(/\s+/g, ' ').trim();
+                let displayTitle = rawTitle.replace(/\n+/g, ', ').replace(/\s{2,}/g, ' ').trim();
 
                 // ── HEADER BAND ──
                 doc.setFillColor(...colors.primary);
@@ -1399,14 +1399,6 @@ function TableViewer({ data }) {
             }
         }
         doc.save('MIR_export.pdf');
-
-        if (project.mirReference) {
-            const nextRef = project.mirReference.replace(/(\d+)(?!.*\d)/, (match) => {
-                let numValue = parseInt(match, 10) + 1;
-                return numValue.toString().padStart(match.length, '0');
-            });
-            updateProject({ mirReference: nextRef });
-        }
     };
 
     // ===================== WORK INSPECTION REQUEST (WIR) — 1 PAGE PER ITEM =====================
@@ -1430,7 +1422,7 @@ function TableViewer({ data }) {
 
         const processText = (txt) => (arabicLoaded && hasArabic(txt)) ? fixArabic(txt) : String(txt || '');
         const today = new Date().toLocaleDateString('en-GB');
-        const wirRef = `WIR-${Date.now().toString().slice(-6)}`;
+        const wirRef = project.wirReference || `WIR-${Date.now().toString().slice(-6)}`;
 
         for (const table of sourceTables) {
             const header = table.header || [];
@@ -1449,7 +1441,7 @@ function TableViewer({ data }) {
                 let codeRaw = codeIdx > -1 ? String(row.cells[codeIdx].value || '') : '';
                 let snRaw = snIdx > -1 ? String(row.cells[snIdx].value || '') : '';
                 let rawTitle = codeRaw.trim() || snRaw.trim() || String(itemNumber).padStart(3, '0');
-                let displayTitle = rawTitle.replace(/\n+/g, ' - ').replace(/\s+/g, ' ').trim();
+                let displayTitle = rawTitle.replace(/\n+/g, ', ').replace(/\s{2,}/g, ' ').trim();
 
                 // ── HEADER ──
                 doc.setFillColor(...colors.primary);

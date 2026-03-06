@@ -14,6 +14,7 @@ const FIELDS = [
     { key: 'issueDate', label: 'Issue Date', placeholder: '', icon: '📅', type: 'date' },
     { key: 'revision', label: 'Revision', placeholder: 'e.g. Rev 0', icon: '🔄' },
     { key: 'mirReference', label: 'MIR Reference / Code', placeholder: 'e.g. MIR-001', icon: '📝' },
+    { key: 'wirReference', label: 'WIR Reference / Code', placeholder: 'e.g. WIR-001', icon: '📝' },
 ];
 
 export default function ProjectSettingsPanel({ isOpen, onClose }) {
