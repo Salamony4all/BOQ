@@ -1141,7 +1141,7 @@ function TableViewer({ data }) {
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(14);
                 doc.setFont('helvetica', 'bold');
-                doc.text('MATERIAL INSPECTION REPORT', pageWidth / 2, 10, { align: 'center' });
+                doc.text('MATERIAL INSPECTION REQUEST', pageWidth / 2, 10, { align: 'center' });
 
                 doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'normal');
@@ -1409,7 +1409,7 @@ function TableViewer({ data }) {
                 doc.rect(0, pageHeight - 8, pageWidth, 8, 'F');
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(6);
-                doc.text(`BOQFlow | Material Inspection Report | ${rowMirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+                doc.text(`Material Inspection Request | ${rowMirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
 
                 itemNumber++;
             }
@@ -1759,7 +1759,7 @@ function TableViewer({ data }) {
                 doc.rect(0, pageHeight - 8, pageWidth, 8, 'F');
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(6);
-                doc.text(`BOQFlow | Work Inspection Request | ${rowWirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
+                doc.text(`Work Inspection Request | ${rowWirRef}  |  Page ${itemNumber}`, pageWidth / 2, pageHeight - 3, { align: 'center' });
 
                 itemNumber++;
             }
