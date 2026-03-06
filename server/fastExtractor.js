@@ -128,15 +128,17 @@ async function extractImagesAndMap(filePath, imagesDir, onBlobCreated = null) {
                 // Bypass Vercel Blob Hobby limits unconditionally while preserving cloud stability
                 try {
                     const formData = new FormData();
-                    formData.append('reqtype', 'fileupload');
-                    formData.append('fileToUpload', data, { filename: `${timestamp}_${fileName}`, contentType: 'image/jpeg' });
+                    formData.append('image', data.toString('base64'));
 
-                    const response = await axios.post('https://catbox.moe/user/api.php', formData, {
-                        headers: formData.getHeaders()
+                    const response = await axios.post('https://api.imgur.com/3/image', formData, {
+                        headers: {
+                            ...formData.getHeaders(),
+                            'Authorization': 'Client-ID 546c25a59c58ad7'
+                        }
                     });
 
                     if (response.status === 200 || response.status === 201) {
-                        const directUrl = response.data.trim();
+                        const directUrl = response.data.data.link;
                         savedImages[fileName] = directUrl;
                         if (onBlobCreated) onBlobCreated(directUrl);
                         return;
