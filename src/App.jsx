@@ -91,7 +91,7 @@ function AppContent({ onOpenSettings }) {
 
     try {
       if (useBlob) {
-        setStage('Uploading to Cloud (Free Tier Bypass)...');
+        setStage('Uploading...');
 
         // Direct Client-Side Upload to Free Temp Storage (Bypasses Vercel Blob Limits)
         const fileUrl = await new Promise((resolve, reject) => {
@@ -124,7 +124,7 @@ function AppContent({ onOpenSettings }) {
           xhr.send(formData);
         });
 
-        setStage('Processing Large File...');
+        setStage('Processing...');
         // Now ask the server to process the remote URL
         const res = await fetch(`${API_BASE}/api/process-blob`, {
           method: 'POST',
