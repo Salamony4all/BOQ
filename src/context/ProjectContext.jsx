@@ -17,6 +17,7 @@ const DEFAULT_PROJECT = {
     includeConsultant: true,
     issueDate: new Date().toISOString().split('T')[0],
     revision: 'Rev 0',
+    mirReference: 'MIR-001',
 };
 
 export function ProjectProvider({ children }) {
