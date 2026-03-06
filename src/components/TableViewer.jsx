@@ -1301,64 +1301,64 @@ function TableViewer({ data }) {
                 });
 
                 // ── ORIGINATOR'S INFORMATION ──
-                const clY = doc.lastAutoTable.finalY + 3;
+                const clY = doc.lastAutoTable.finalY + 2;
                 doc.setDrawColor(...colors.border);
                 doc.setFillColor(...colors.lightBg);
-                doc.rect(8, clY, pageWidth - 16, 6, 'FD');
+                doc.rect(8, clY, pageWidth - 16, 5, 'FD');
                 doc.setTextColor(...colors.text);
                 doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text("ORIGINATOR'S INFORMATION", 12, clY + 4.2);
+                doc.text("ORIGINATOR'S INFORMATION", 12, clY + 3.8);
 
                 autoTable(doc, {
-                    startY: clY + 6,
+                    startY: clY + 5,
                     margin: { left: 8, right: 8 },
                     head: [['Name', 'Designation', 'Signature']],
                     body: [[processText(project.originatorName || ''), processText(project.originatorDesignation || ''), '']],
                     theme: 'grid',
-                    styles: { fontSize: 7.5, cellPadding: 4, textColor: colors.text, font: arabicLoaded ? 'Almarai' : 'helvetica' },
+                    styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, font: arabicLoaded ? 'Almarai' : 'helvetica' },
                     headStyles: { fillColor: [248, 250, 252], textColor: colors.text, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border },
-                    bodyStyles: { minCellHeight: 12 },
+                    bodyStyles: { minCellHeight: 6 },
                     columnStyles: { 0: { cellWidth: 55 }, 1: { cellWidth: 55 }, 2: { cellWidth: 'auto' } }
                 });
 
                 // ── COMMENTS ──
                 const comY = doc.lastAutoTable.finalY;
                 doc.setFillColor(...colors.lightBg);
-                doc.rect(8, comY, pageWidth - 16, 6, 'FD');
+                doc.rect(8, comY, pageWidth - 16, 5, 'FD');
                 doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text("COMMENTS:", 12, comY + 4.2);
+                doc.text("COMMENTS:", 12, comY + 3.8);
 
                 // Comment box white space
                 doc.setFillColor(255, 255, 255);
-                doc.rect(8, comY + 6, pageWidth - 16, 17, 'FD');
+                doc.rect(8, comY + 5, pageWidth - 16, 13, 'FD');
 
                 // Approvals checkboxes 
-                const appY = comY + 23;
+                const appY = comY + 18;
                 doc.setFillColor(255, 255, 255);
-                doc.rect(8, appY, pageWidth - 16, 7, 'FD');
+                doc.rect(8, appY, pageWidth - 16, 6, 'FD');
                 doc.setFontSize(7);
                 doc.setFont('helvetica', 'bold');
 
-                doc.rect(30, appY + 2.5, 2, 2);
-                doc.text('A. Approved', 34, appY + 4.5);
+                doc.rect(30, appY + 2, 2, 2);
+                doc.text('A. Approved', 34, appY + 4);
 
-                doc.rect(85, appY + 2.5, 2, 2);
-                doc.text('B. Approved as Noted', 89, appY + 4.5);
+                doc.rect(85, appY + 2, 2, 2);
+                doc.text('B. Approved as Noted', 89, appY + 4);
 
-                doc.rect(145, appY + 2.5, 2, 2);
-                doc.text('C. Revise and Resubmit', 149, appY + 4.5);
+                doc.rect(145, appY + 2, 2, 2);
+                doc.text('C. Revise and Resubmit', 149, appY + 4);
 
                 // ── REVIEWED AND APPROVED BY ──
-                const sigY = appY + 7 + 3;
+                const sigY = appY + 6 + 1.5;
                 if (sigY + 22 < pageHeight - 8) {
                     doc.setFillColor(...colors.primary);
-                    doc.rect(8, sigY, pageWidth - 16, 6, 'F');
+                    doc.rect(8, sigY, pageWidth - 16, 5, 'F');
                     doc.setTextColor(...colors.white);
                     doc.setFontSize(8);
                     doc.setFont('helvetica', 'bold');
-                    doc.text('REVIEWED AND APPROVED BY', pageWidth / 2, sigY + 4.2, { align: 'center' });
+                    doc.text('REVIEWED AND APPROVED BY', pageWidth / 2, sigY + 3.8, { align: 'center' });
 
                     const sigParties = [
                         { name: 'Submitted By\n(Contractor)', keep: project.includeContractor !== false },
@@ -1366,7 +1366,7 @@ function TableViewer({ data }) {
                         { name: `Approved By\n(Client)` + (project.clientRepName ? `\n${project.clientRepName}` : '') + (project.clientRepDesignation ? `\n${project.clientRepDesignation}` : ''), keep: true }
                     ].filter(p => p.keep).map(p => p.name);
 
-                    const boxW = 54, boxH = 21, boxY = sigY + 8;
+                    const boxW = 54, boxH = 21, boxY = sigY + 6.5;
                     const gap = sigParties.length > 1 ? (pageWidth - 16 - boxW * sigParties.length) / (sigParties.length - 1) : 0;
 
                     sigParties.forEach((name, i) => {
@@ -1650,64 +1650,64 @@ function TableViewer({ data }) {
                 });
 
                 // ── ORIGINATOR'S INFORMATION ──
-                const clY = doc.lastAutoTable.finalY + 3;
+                const clY = doc.lastAutoTable.finalY + 2;
                 doc.setDrawColor(...colors.border);
                 doc.setFillColor(...colors.lightBg);
-                doc.rect(8, clY, pageWidth - 16, 6, 'FD');
+                doc.rect(8, clY, pageWidth - 16, 5, 'FD');
                 doc.setTextColor(...colors.text);
                 doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text("ORIGINATOR'S INFORMATION", 12, clY + 4.2);
+                doc.text("ORIGINATOR'S INFORMATION", 12, clY + 3.8);
 
                 autoTable(doc, {
-                    startY: clY + 6,
+                    startY: clY + 5,
                     margin: { left: 8, right: 8 },
                     head: [['Name', 'Designation', 'Signature']],
                     body: [[processText(project.originatorName || ''), processText(project.originatorDesignation || ''), '']],
                     theme: 'grid',
-                    styles: { fontSize: 7.5, cellPadding: 4, textColor: colors.text, font: arabicLoaded ? 'Almarai' : 'helvetica' },
+                    styles: { fontSize: 7.5, cellPadding: 2, textColor: colors.text, font: arabicLoaded ? 'Almarai' : 'helvetica' },
                     headStyles: { fillColor: [248, 250, 252], textColor: colors.text, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border },
-                    bodyStyles: { minCellHeight: 12 },
+                    bodyStyles: { minCellHeight: 6 },
                     columnStyles: { 0: { cellWidth: 55 }, 1: { cellWidth: 55 }, 2: { cellWidth: 'auto' } }
                 });
 
                 // ── COMMENTS ──
                 const comY = doc.lastAutoTable.finalY;
                 doc.setFillColor(...colors.lightBg);
-                doc.rect(8, comY, pageWidth - 16, 6, 'FD');
+                doc.rect(8, comY, pageWidth - 16, 5, 'FD');
                 doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text("COMMENTS:", 12, comY + 4.2);
+                doc.text("COMMENTS:", 12, comY + 3.8);
 
                 // Comment box white space
                 doc.setFillColor(255, 255, 255);
-                doc.rect(8, comY + 6, pageWidth - 16, 17, 'FD');
+                doc.rect(8, comY + 5, pageWidth - 16, 13, 'FD');
 
                 // Approvals checkboxes 
-                const appY = comY + 23;
+                const appY = comY + 18;
                 doc.setFillColor(255, 255, 255);
-                doc.rect(8, appY, pageWidth - 16, 7, 'FD');
+                doc.rect(8, appY, pageWidth - 16, 6, 'FD');
                 doc.setFontSize(7);
                 doc.setFont('helvetica', 'bold');
 
-                doc.rect(30, appY + 2.5, 2, 2);
-                doc.text('A. Approved', 34, appY + 4.5);
+                doc.rect(30, appY + 2, 2, 2);
+                doc.text('A. Approved', 34, appY + 4);
 
-                doc.rect(85, appY + 2.5, 2, 2);
-                doc.text('B. Approved as Noted', 89, appY + 4.5);
+                doc.rect(85, appY + 2, 2, 2);
+                doc.text('B. Approved as Noted', 89, appY + 4);
 
-                doc.rect(145, appY + 2.5, 2, 2);
-                doc.text('C. Revise and Resubmit', 149, appY + 4.5);
+                doc.rect(145, appY + 2, 2, 2);
+                doc.text('C. Revise and Resubmit', 149, appY + 4);
 
                 // ── REVIEWED AND APPROVED BY ──
-                const sigY = appY + 7 + 3;
+                const sigY = appY + 6 + 1.5;
                 if (sigY + 22 < pageHeight - 8) {
                     doc.setFillColor(...colors.primary);
-                    doc.rect(8, sigY, pageWidth - 16, 6, 'F');
+                    doc.rect(8, sigY, pageWidth - 16, 5, 'F');
                     doc.setTextColor(...colors.white);
                     doc.setFontSize(8);
                     doc.setFont('helvetica', 'bold');
-                    doc.text('REVIEWED AND APPROVED BY', pageWidth / 2, sigY + 4.2, { align: 'center' });
+                    doc.text('REVIEWED AND APPROVED BY', pageWidth / 2, sigY + 3.8, { align: 'center' });
 
                     const sigParties = [
                         { name: 'Requested By\n(Contractor)', keep: project.includeContractor !== false },
@@ -1715,7 +1715,7 @@ function TableViewer({ data }) {
                         { name: `Approved By\n(Client)` + (project.clientRepName ? `\n${project.clientRepName}` : '') + (project.clientRepDesignation ? `\n${project.clientRepDesignation}` : ''), keep: true }
                     ].filter(p => p.keep).map(p => p.name);
 
-                    const boxW = 54, boxH = 21, boxY = sigY + 8;
+                    const boxW = 54, boxH = 21, boxY = sigY + 6.5;
                     const gap = sigParties.length > 1 ? (pageWidth - 16 - boxW * sigParties.length) / (sigParties.length - 1) : 0;
 
                     sigParties.forEach((name, i) => {
