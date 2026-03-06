@@ -1096,11 +1096,17 @@ function TableViewer({ data }) {
             const qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
             const uomIdx = header.findIndex(h => /uom|unit/i.test(h));
             const snIdx = header.findIndex(h => /s\.?n|no\.|#/i.test(h));
+            const codeIdx = header.findIndex(h => /code|item.*code/i.test(h));
 
             for (const row of table.rows) {
                 if (!row.cells.some(c => c.value)) continue;
                 if (pageAdded) doc.addPage();
                 pageAdded = true;
+
+                let codeRaw = codeIdx > -1 ? String(row.cells[codeIdx].value || '') : '';
+                let snRaw = snIdx > -1 ? String(row.cells[snIdx].value || '') : '';
+                let rawTitle = codeRaw.trim() || snRaw.trim() || String(itemNumber).padStart(3, '0');
+                let displayTitle = rawTitle.replace(/\n+/g, ' - ').replace(/\s+/g, ' ').trim();
 
                 // ── HEADER BAND ──
                 doc.setFillColor(...colors.primary);
@@ -1137,7 +1143,7 @@ function TableViewer({ data }) {
 
                 doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'normal');
-                doc.text(`Ref: ${mirRef}   |   Item ${String(itemNumber).padStart(3, '0')}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
+                doc.text(`Ref: ${mirRef}   |   Item ${displayTitle}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
 
                 // ── PROJECT INFO BOX ──
                 const pY = 25;
@@ -1186,7 +1192,7 @@ function TableViewer({ data }) {
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(8.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text(`ITEM ${String(sn).padStart(3, '0')} — MATERIAL INSPECTION`, 12, contentY + 4.8);
+                doc.text(`ITEM ${displayTitle} — MATERIAL INSPECTION`, 12, contentY + 4.8);
                 contentY += 10;
 
                 // ── IMAGES ──
@@ -1433,11 +1439,17 @@ function TableViewer({ data }) {
             const qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
             const uomIdx = header.findIndex(h => /uom|unit/i.test(h));
             const snIdx = header.findIndex(h => /s\.?n|no\.|#/i.test(h));
+            const codeIdx = header.findIndex(h => /code|item.*code/i.test(h));
 
             for (const row of table.rows) {
                 if (!row.cells.some(c => c.value)) continue;
                 if (pageAdded) doc.addPage();
                 pageAdded = true;
+
+                let codeRaw = codeIdx > -1 ? String(row.cells[codeIdx].value || '') : '';
+                let snRaw = snIdx > -1 ? String(row.cells[snIdx].value || '') : '';
+                let rawTitle = codeRaw.trim() || snRaw.trim() || String(itemNumber).padStart(3, '0');
+                let displayTitle = rawTitle.replace(/\n+/g, ' - ').replace(/\s+/g, ' ').trim();
 
                 // ── HEADER ──
                 doc.setFillColor(...colors.primary);
@@ -1473,7 +1485,7 @@ function TableViewer({ data }) {
 
                 doc.setFontSize(7.5);
                 doc.setFont('helvetica', 'normal');
-                doc.text(`Ref: ${wirRef}   |   Item ${String(itemNumber).padStart(3, '0')}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
+                doc.text(`Ref: ${wirRef}   |   Item ${displayTitle}   |   Date: ${today}`, pageWidth / 2, 18, { align: 'center' });
 
                 // ── PROJECT INFO ──
                 const pY = 25;
@@ -1522,7 +1534,7 @@ function TableViewer({ data }) {
                 doc.setTextColor(...colors.white);
                 doc.setFontSize(8.5);
                 doc.setFont('helvetica', 'bold');
-                doc.text(`ITEM ${String(sn).padStart(3, '0')} — WORK INSPECTION`, 12, contentY + 4.8);
+                doc.text(`ITEM ${displayTitle} — WORK INSPECTION`, 12, contentY + 4.8);
                 contentY += 10;
 
                 // ── IMAGES ──
