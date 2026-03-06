@@ -1093,7 +1093,8 @@ function TableViewer({ data }) {
             const header = table.header || [];
             const descIdx = header.findIndex(h => /description|desc/i.test(h));
             const brandIdx = header.findIndex(h => /brand|maker|origin/i.test(h));
-            const qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
+            let qtyIdx = header.findIndex(h => /revised.*qty|revised.*quantity|actual.*qty|actual.*quantity/i.test(h));
+            if (qtyIdx === -1) qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
             const uomIdx = header.findIndex(h => /uom|unit/i.test(h));
             const snIdx = header.findIndex(h => /s\.?n|no\.|#/i.test(h));
             const codeIdx = header.findIndex(h => /code|item.*code/i.test(h));
@@ -1443,7 +1444,8 @@ function TableViewer({ data }) {
             const header = table.header || [];
             const descIdx = header.findIndex(h => /description|desc/i.test(h));
             const brandIdx = header.findIndex(h => /brand|maker|origin/i.test(h));
-            const qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
+            let qtyIdx = header.findIndex(h => /revised.*qty|revised.*quantity|actual.*qty|actual.*quantity/i.test(h));
+            if (qtyIdx === -1) qtyIdx = header.findIndex(h => /qty|quantity/i.test(h));
             const uomIdx = header.findIndex(h => /uom|unit/i.test(h));
             const snIdx = header.findIndex(h => /s\.?n|no\.|#/i.test(h));
             const codeIdx = header.findIndex(h => /code|item.*code/i.test(h));
