@@ -7,7 +7,7 @@ import AdmZip from 'adm-zip';
 import { promisify } from 'util';
 import xml2js from 'xml2js';
 import { fileURLToPath } from 'url';
-import fetch from 'node-fetch';
+import axios from 'axios';
 import FormData from 'form-data';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -130,13 +130,12 @@ async function extractImagesAndMap(filePath, imagesDir, onBlobCreated = null) {
                     const formData = new FormData();
                     formData.append('file', data, { filename: `${timestamp}_${fileName}`, contentType: 'image/jpeg' });
 
-                    const response = await fetch('https://tmpfiles.org/api/v1/upload', {
-                        method: 'POST',
-                        body: formData
+                    const response = await axios.post('https://tmpfiles.org/api/v1/upload', formData, {
+                        headers: formData.getHeaders()
                     });
 
-                    if (response.ok) {
-                        const json = await response.json();
+                    if (response.status === 200 || response.status === 201) {
+                        const json = response.data;
                         // tmpfiles.org returns 'tmpfiles.org/123/file.jpg', convert to direct download path '/dl/'
                         const directUrl = json.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
                         savedImages[fileName] = directUrl;
