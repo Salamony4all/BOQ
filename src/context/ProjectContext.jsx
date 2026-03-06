@@ -18,6 +18,12 @@ const DEFAULT_PROJECT = {
     issueDate: new Date().toISOString().split('T')[0],
     revision: 'Rev 0',
     mirReference: 'MIR-001',
+    brandOrigin: '',
+    unitOfMeasure: '',
+    originatorName: '',
+    originatorDesignation: '',
+    clientRepName: '',
+    clientRepDesignation: '',
 };
 
 export function ProjectProvider({ children }) {

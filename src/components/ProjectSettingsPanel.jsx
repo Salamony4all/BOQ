@@ -15,6 +15,12 @@ const FIELDS = [
     { key: 'revision', label: 'Revision', placeholder: 'e.g. Rev 0', icon: '🔄' },
     { key: 'mirReference', label: 'MIR Reference / Code', placeholder: 'e.g. MIR-001', icon: '📝' },
     { key: 'wirReference', label: 'WIR Reference / Code', placeholder: 'e.g. WIR-001', icon: '📝' },
+    { key: 'brandOrigin', label: 'Brand / Origin (Preset)', placeholder: 'e.g. Sony / Japan', icon: '🏷️' },
+    { key: 'unitOfMeasure', label: 'Unit of Measure (Preset)', placeholder: 'e.g. PCS, Nos', icon: '📏' },
+    { key: 'originatorName', label: 'Originator Name', placeholder: 'e.g. John Doe', icon: '👤' },
+    { key: 'originatorDesignation', label: 'Originator Designation', placeholder: 'e.g. QA/QC Engineer', icon: '📛' },
+    { key: 'clientRepName', label: 'Client Rep Name', placeholder: 'e.g. Jane Smith', icon: '👤' },
+    { key: 'clientRepDesignation', label: 'Client Rep Designation', placeholder: 'e.g. Project Manager', icon: '📛' },
 ];
 
 export default function ProjectSettingsPanel({ isOpen, onClose }) {

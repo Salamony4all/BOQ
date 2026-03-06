@@ -1180,9 +1180,9 @@ function TableViewer({ data }) {
 
                 // ── ITEM DETAILS ──
                 const desc = descIdx > -1 ? row.cells[descIdx].value : 'N/A';
-                const brand = brandIdx > -1 ? row.cells[brandIdx].value : 'N/A';
+                const brand = project.brandOrigin ? project.brandOrigin : (brandIdx > -1 ? row.cells[brandIdx].value : '');
                 const qty = qtyIdx > -1 ? row.cells[qtyIdx].value : 'As per BOQ';
-                const uom = uomIdx > -1 ? row.cells[uomIdx].value : 'No.';
+                const uom = project.unitOfMeasure ? project.unitOfMeasure : (uomIdx > -1 ? row.cells[uomIdx].value : '');
                 const sn = snIdx > -1 ? row.cells[snIdx].value : String(itemNumber);
 
                 let contentY = 49;
@@ -1314,7 +1314,7 @@ function TableViewer({ data }) {
                     startY: clY + 6,
                     margin: { left: 8, right: 8 },
                     head: [['Name', 'Designation', 'Signature']],
-                    body: [['', '', '']],
+                    body: [[processText(project.originatorName || ''), processText(project.originatorDesignation || ''), '']],
                     theme: 'grid',
                     styles: { fontSize: 7.5, cellPadding: 4, textColor: colors.text, font: arabicLoaded ? 'Almarai' : 'helvetica' },
                     headStyles: { fillColor: [248, 250, 252], textColor: colors.text, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border },
@@ -1363,10 +1363,10 @@ function TableViewer({ data }) {
                     const sigParties = [
                         { name: 'Submitted By\n(Contractor)', keep: project.includeContractor !== false },
                         { name: 'Checked By\n(Consultant)', keep: project.includeConsultant !== false },
-                        { name: 'Approved By\n(Client)', keep: true }
+                        { name: `Approved By\n(Client)` + (project.clientRepName ? `\n${project.clientRepName}` : '') + (project.clientRepDesignation ? `\n${project.clientRepDesignation}` : ''), keep: true }
                     ].filter(p => p.keep).map(p => p.name);
 
-                    const boxW = 54, boxH = 19, boxY = sigY + 8;
+                    const boxW = 54, boxH = 21, boxY = sigY + 8;
                     const gap = sigParties.length > 1 ? (pageWidth - 16 - boxW * sigParties.length) / (sigParties.length - 1) : 0;
 
                     sigParties.forEach((name, i) => {
@@ -1377,14 +1377,28 @@ function TableViewer({ data }) {
                         doc.rect(x, boxY, boxW, boxH, 'FD');
                         doc.setFillColor(...colors.accent);
                         doc.rect(x, boxY, boxW, 5.5, 'F');
+
+                        const parts = name.split('\n');
+
                         doc.setTextColor(...colors.white);
                         doc.setFontSize(6.5);
                         doc.setFont('helvetica', 'bold');
-                        doc.text(name.split('\n')[0], x + boxW / 2, boxY + 4, { align: 'center' });
+                        doc.text(parts[0] || '', x + boxW / 2, boxY + 4, { align: 'center' });
+
                         doc.setTextColor(...colors.text);
                         doc.setFontSize(6);
                         doc.setFont('helvetica', 'normal');
-                        doc.text(name.split('\n')[1] || '', x + boxW / 2, boxY + 8.5, { align: 'center' });
+                        doc.text(parts[1] || '', x + boxW / 2, boxY + 8.5, { align: 'center' });
+
+                        if (parts[2]) {
+                            doc.text(parts[2], x + boxW / 2, boxY + 11.5, { align: 'center' });
+                        }
+                        if (parts[3]) {
+                            doc.setFontSize(5.5);
+                            doc.text(parts[3], x + boxW / 2, boxY + 14.5, { align: 'center' });
+                        }
+
+                        doc.setFontSize(6);
                         doc.text('Date: __________', x + boxW / 2, boxY + boxH - 2, { align: 'center' });
                     });
                 }
@@ -1621,9 +1635,9 @@ function TableViewer({ data }) {
                     head: [[processText('Field'), processText('Details')]],
                     body: [
                         [processText('Work Description'), processText(desc)],
-                        [processText('Brand / Material'), processText(brand)],
+                        [processText('Brand / Material'), processText(project.brandOrigin ? project.brandOrigin : (brandIdx > -1 ? row.cells[brandIdx].value : ''))],
                         [processText('Quantity'), processText(qty)],
-                        [processText('Unit'), processText(uom)],
+                        [processText('Unit'), processText(project.unitOfMeasure ? project.unitOfMeasure : (uomIdx > -1 ? row.cells[uomIdx].value : ''))],
                         [processText('Work Area / Zone'), processText(project.locationZone || '')],
                         [processText('Inspection Required'), ''],
                         [processText('Remarks'), ''],
@@ -1649,7 +1663,7 @@ function TableViewer({ data }) {
                     startY: clY + 6,
                     margin: { left: 8, right: 8 },
                     head: [['Name', 'Designation', 'Signature']],
-                    body: [['', '', '']],
+                    body: [[processText(project.originatorName || ''), processText(project.originatorDesignation || ''), '']],
                     theme: 'grid',
                     styles: { fontSize: 7.5, cellPadding: 4, textColor: colors.text, font: arabicLoaded ? 'Almarai' : 'helvetica' },
                     headStyles: { fillColor: [248, 250, 252], textColor: colors.text, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border },
@@ -1698,10 +1712,10 @@ function TableViewer({ data }) {
                     const sigParties = [
                         { name: 'Requested By\n(Contractor)', keep: project.includeContractor !== false },
                         { name: 'Inspected By\n(Consultant)', keep: project.includeConsultant !== false },
-                        { name: 'Approved By\n(Client)', keep: true }
+                        { name: `Approved By\n(Client)` + (project.clientRepName ? `\n${project.clientRepName}` : '') + (project.clientRepDesignation ? `\n${project.clientRepDesignation}` : ''), keep: true }
                     ].filter(p => p.keep).map(p => p.name);
 
-                    const boxW = 54, boxH = 19, boxY = sigY + 8;
+                    const boxW = 54, boxH = 21, boxY = sigY + 8;
                     const gap = sigParties.length > 1 ? (pageWidth - 16 - boxW * sigParties.length) / (sigParties.length - 1) : 0;
 
                     sigParties.forEach((name, i) => {
@@ -1712,14 +1726,28 @@ function TableViewer({ data }) {
                         doc.rect(x, boxY, boxW, boxH, 'FD');
                         doc.setFillColor(...colors.accent);
                         doc.rect(x, boxY, boxW, 5.5, 'F');
+
+                        const parts = name.split('\n');
+
                         doc.setTextColor(...colors.white);
                         doc.setFontSize(6.5);
                         doc.setFont('helvetica', 'bold');
-                        doc.text(name.split('\n')[0], x + boxW / 2, boxY + 4, { align: 'center' });
+                        doc.text(parts[0] || '', x + boxW / 2, boxY + 4, { align: 'center' });
+
                         doc.setTextColor(...colors.text);
                         doc.setFontSize(6);
                         doc.setFont('helvetica', 'normal');
-                        doc.text(name.split('\n')[1] || '', x + boxW / 2, boxY + 8.5, { align: 'center' });
+                        doc.text(parts[1] || '', x + boxW / 2, boxY + 8.5, { align: 'center' });
+
+                        if (parts[2]) {
+                            doc.text(parts[2], x + boxW / 2, boxY + 11.5, { align: 'center' });
+                        }
+                        if (parts[3]) {
+                            doc.setFontSize(5.5);
+                            doc.text(parts[3], x + boxW / 2, boxY + 14.5, { align: 'center' });
+                        }
+
+                        doc.setFontSize(6);
                         doc.text('Date: __________', x + boxW / 2, boxY + boxH - 2, { align: 'center' });
                     });
                 }
