@@ -128,16 +128,15 @@ async function extractImagesAndMap(filePath, imagesDir, onBlobCreated = null) {
                 // Bypass Vercel Blob Hobby limits unconditionally while preserving cloud stability
                 try {
                     const formData = new FormData();
-                    formData.append('file', data, { filename: `${timestamp}_${fileName}`, contentType: 'image/jpeg' });
+                    formData.append('reqtype', 'fileupload');
+                    formData.append('fileToUpload', data, { filename: `${timestamp}_${fileName}`, contentType: 'image/jpeg' });
 
-                    const response = await axios.post('https://tmpfiles.org/api/v1/upload', formData, {
+                    const response = await axios.post('https://catbox.moe/user/api.php', formData, {
                         headers: formData.getHeaders()
                     });
 
                     if (response.status === 200 || response.status === 201) {
-                        const json = response.data;
-                        // tmpfiles.org returns 'tmpfiles.org/123/file.jpg', convert to direct download path '/dl/'
-                        const directUrl = json.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+                        const directUrl = response.data.trim();
                         savedImages[fileName] = directUrl;
                         if (onBlobCreated) onBlobCreated(directUrl);
                         return;
